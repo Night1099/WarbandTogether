@@ -1,0 +1,5 @@
+set_max_players 10 10
+set_port 7240
+set_server_name CoopCampaign
+set_pass_admin admin123
+start

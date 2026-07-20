@@ -1,0 +1,93 @@
+name: release
+
+# On every version tag: build the plugin/ASI/loaders with MSVC x86, compile
+# the module with Python 2.7, and attach a ready-to-extract zip to a GitHub
+# Release. The zip ships everything buildable from this repo; the pinned WSE2
+# engine cannot be distributed here (see docs/wse2-binary-patches.md).
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build C artifacts (plugin, ASI, winmm proxy, dinput8 loader)
+        shell: cmd
+        run: |
+          rem Each bat runs vcvarsall; give each its own cmd instance so the
+          rem PATH additions don't stack past the environment size limit.
+          cmd /c build\build_plugin.bat
+          if errorlevel 1 exit /b 1
+          cmd /c build\build.bat
+          if errorlevel 1 exit /b 1
+          cmd /c build\build_loader.bat
+          if errorlevel 1 exit /b 1
+          cmd /c asi_loader\build.bat
+          if errorlevel 1 exit /b 1
+
+      - name: Install Python 2.7
+        run: choco install python2 -y --no-progress
+
+      - name: Point module export at ./output
+        shell: pwsh
+        run: |
+          $p = 'wse2work/Native-Coop-master/module_info.py'
+          (Get-Content $p) -replace '^export_dir = .*', 'export_dir = "./output/"' | Set-Content $p
+          New-Item -ItemType Directory wse2work/Native-Coop-master/output | Out-Null
+
+      - name: Build module (full 27-step chain)
+        shell: cmd
+        working-directory: wse2work/Native-Coop-master
+        run: |
+          set "PATH=C:\Python27;%PATH%"
+          call .\build_module.bat <nul
+          if not exist output\scripts.txt (
+            echo module build produced no scripts.txt
+            exit /b 1
+          )
+          for %%S in (output\scripts.txt) do if %%~zS LSS 1000000 (
+            echo scripts.txt suspiciously small: %%~zS bytes
+            exit /b 1
+          )
+
+      - name: Stage and zip
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          New-Item -ItemType Directory stage, stage/Configs, stage/Modules/NativeCoop | Out-Null
+          Copy-Item bin/CoopWSEPlugin.dll, bin/warband_coop.asi, bin/winmm.dll, asi_loader/dinput8.dll stage
+          Copy-Item deploy/coop_client.ini stage/coop.ini
+          Copy-Item deploy/configs/* stage/Configs
+          Copy-Item deploy/scripts/*.bat stage
+          Copy-Item wse2work/Native-Coop-master/output/* stage/Modules/NativeCoop
+          Compress-Archive -Path stage/* -DestinationPath "WarbandTogether-$tag-win32.zip"
+          Get-Item "WarbandTogether-$tag-win32.zip" | Format-List Name, Length
+
+      - name: Create release with zip
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $notes = @(
+            'Built from source by GitHub Actions.',
+            '',
+            '**Contents:** CoopWSEPlugin.dll, warband_coop.asi, winmm.dll (proxy loader), dinput8.dll (ASI loader), the compiled NativeCoop module, server configs, and launch scripts.',
+            '',
+            '**Not included -- required to play:** Mount & Blade: Warband 1.174 with the pinned WSE2 build (rev 1145) and the four client binary patches applied. See `docs/wse2-binary-patches.md`.',
+            '',
+            '**Install:**',
+            '1. In your Warband install, copy `Modules/Native` to `Modules/NativeCoop`.',
+            '2. Extract this zip over the Warband install root (the module txt files land in `Modules/NativeCoop`, everything else in the game root).',
+            '3. Copy your `C:\Windows\SysWOW64\winmm.dll` into the game root as `winmm_sys.dll` (the proxy forwards to it).',
+            '4. Edit `HostIP` in `coop.ini` to point at the campaign server.',
+            '5. Host: run `coop_launch_all.bat [N]`. Players: launch `mb_warband_wse2.exe`, pick NativeCoop, join via the MP browser.'
+          ) -join "`n"
+          gh release create $tag "WarbandTogether-$tag-win32.zip" --title "WarbandTogether $tag" --notes $notes

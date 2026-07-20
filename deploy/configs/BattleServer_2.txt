@@ -1,0 +1,18 @@
+set_server_name CoopBattle2
+set_pass_admin admin123
+set_mission coop_battle
+set_max_players 10 10
+set_map multi_scene_1
+add_factions fac_kingdom_1 fac_kingdom_1
+add_factions fac_kingdom_2 fac_kingdom_2
+add_factions fac_kingdom_3 fac_kingdom_3
+add_factions fac_kingdom_4 fac_kingdom_4
+add_factions fac_kingdom_5 fac_kingdom_5
+add_factions fac_kingdom_6 fac_kingdom_6
+set_randomize_factions 1
+set_team_point_limit 10
+set_steam_port 7265
+set_port 7245
+set_upload_limit 100000000
+set_server_log_folder Logs
+start

@@ -1,0 +1,3 @@
+@echo off
+echo Launching Player 2 (separate profile)...
+mb_warband_wse2.exe --config-path "C:\Users\ben\Documents\Mount&Blade Warband WSE2 P2\rgl_config_p2.ini" --module NativeCoop
