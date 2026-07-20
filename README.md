@@ -29,7 +29,7 @@ See `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync,
 ## Requirements
 
 - Mount & Blade: Warband 1.174
-- [WSE2](https://forums.taleworlds.com/index.php?threads/wse2-warband-script-enhancer-2.371084/) **pinned at revision 1145** (v1.1.4.5, Mar 2026) — all binary patches (`docs/wse2-binary-patches.md`) and hook addresses are keyed to these exact binaries; upgrading WSE2 is a dedicated porting task, not a drop-in
+- [WSE2](https://github.com/Ruslan-700/WSE2-Releases/releases/tag/v1.1.4.5) **pinned at revision 1145** (v1.1.4.5, Mar 2026) — all binary patches (`docs/wse2-binary-patches.md`) and hook addresses are keyed to these exact binaries; upgrading WSE2 is a dedicated porting task, not a drop-in
 - Python 2.7 (module system build)
 - Visual Studio with MSVC x86 (DLL builds)
 
