@@ -2,7 +2,15 @@
 
 Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign mode. Players join a shared campaign map with their own persistent characters, encounter enemies together, and fight battles in multiplayer — with casualties and XP flowing back into the campaign.
 
-## Status — v0.7.0
+## Status — v0.0.x, early alpha
+
+> **⚠️ Set your expectations:** this is **not a fully playable mod yet**. The
+> core coop loops below work in testing, but do not expect a full campaign
+> playthrough — battle loot/gold and political consequences are missing,
+> some siege and economy behavior diverges from singleplayer, and longer
+> sessions will hit bugs and desyncs. Grab the current build from the
+> [Releases page](https://github.com/Night1099/WarbandTogether/releases)
+> and report what breaks via Issues.
 
 **Working:**
 - WSE2 campaign server (dedicated, port 7240) with multiple players on the shared campaign map

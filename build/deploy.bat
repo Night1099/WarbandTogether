@@ -1,14 +1,22 @@
 @echo off
 rem Deploys built artifacts from bin\ to the game directory.
 rem Called automatically at the end of each build script; safe to run standalone.
+rem Set GAMEDIR to override; otherwise the Warband install is auto-detected
+rem from the Steam registry, every Steam library, and common drive roots.
 rem A file locked by a running game/server prints a WARN and is skipped --
 rem close the game/servers and rerun build\deploy.bat to finish.
 cd /d %~dp0\..
-if not defined GAMEDIR set "GAMEDIR=F:\SteamLibrary\steamapps\common\MountBlade Warband"
+
+if not defined GAMEDIR call :find_gamedir
+if not defined GAMEDIR (
+    echo WARN: no Warband install found -- set GAMEDIR to your MountBlade Warband directory
+    exit /b 1
+)
 if not exist "%GAMEDIR%\mb_warband.exe" (
     echo WARN: game not found at %GAMEDIR% -- deploy skipped
     exit /b 1
 )
+echo Deploying to: %GAMEDIR%
 
 set DEPLOY_WARN=0
 
@@ -51,4 +59,30 @@ exit /b 0
 :warn
 echo WARN: could not copy %1 ^(file locked by running game/server?^)
 set /a DEPLOY_WARN+=1
+exit /b 0
+
+:find_gamedir
+set "STEAMROOT="
+for /f "tokens=2,*" %%A in ('reg query "HKCU\Software\Valve\Steam" /v SteamPath 2^>nul ^| findstr /i "SteamPath"') do set "STEAMROOT=%%B"
+if defined STEAMROOT set "STEAMROOT=%STEAMROOT:/=\%"
+call :try_steam_root "%STEAMROOT%"
+if defined GAMEDIR exit /b 0
+if not defined STEAMROOT goto :scan_drives
+if not exist "%STEAMROOT%\steamapps\libraryfolders.vdf" goto :scan_drives
+powershell -NoProfile -Command "Select-String '\"path\"\s+\"(.+?)\"' -Path '%STEAMROOT%\steamapps\libraryfolders.vdf' | ForEach-Object { $_.Matches[0].Groups[1].Value -replace '\\\\','\' }" > "%TEMP%\coop_steam_libs.txt" 2>nul
+for /f "usebackq delims=" %%P in ("%TEMP%\coop_steam_libs.txt") do call :try_steam_root "%%P"
+del "%TEMP%\coop_steam_libs.txt" 2>nul
+if defined GAMEDIR exit /b 0
+:scan_drives
+for %%D in (C D E F G H J K L M) do (
+    call :try_steam_root "%%D:\SteamLibrary"
+    call :try_steam_root "%%D:\Program Files (x86)\Steam"
+    call :try_steam_root "%%D:\Steam"
+)
+exit /b 0
+
+:try_steam_root
+if defined GAMEDIR exit /b 0
+if "%~1"=="" exit /b 0
+if exist "%~1\steamapps\common\MountBlade Warband\mb_warband.exe" set "GAMEDIR=%~1\steamapps\common\MountBlade Warband"
 exit /b 0
