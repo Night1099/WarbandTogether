@@ -104,12 +104,6 @@ battle IPC) and never needs forwarding.
 - **Screens:** character, inventory, party, and trade screens work
   normally; your edits sync to the server when the screen closes.
 
-## Two clients on one PC (testing)
-
-Run `coop_client2.bat` for a second client with its own separate config
-profile. Combined with `coop_launch_all.bat` you can test multiplayer
-alone on one machine.
-
 ## Troubleshooting
 
 | Problem | Likely cause / fix |
