@@ -26,7 +26,7 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 - Terrain-appropriate battle scenes (plain/steppe/snow/desert/forest variants)
 - 5-minute autosave on the campaign server
 
-See `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync, inventory sync, party-screen sync) and `docs/BUILD.md` for the build chain.
+See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync, inventory sync, party-screen sync), and `docs/BUILD.md` for the build chain.
 
 ## Requirements
 
