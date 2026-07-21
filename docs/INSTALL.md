@@ -75,12 +75,6 @@ Or start things individually:
   slot each (ports 7241/7243/7245/7247); run as many as you want, the
   pool adapts automatically
 
-Allow the ports through Windows Firewall once (run as administrator):
-
-```
-netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7267
-```
-
 **Hosting over the internet:** forward UDP ports 7240–7247 on your
 router to the host machine. Port 7242 is server-internal (campaign ↔
 battle IPC) and never needs forwarding.
