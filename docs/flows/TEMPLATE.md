@@ -41,7 +41,7 @@ Rules that must hold, one bullet each, with the anchor that enforces it.
 
 | # | Behavior | Ours (anchor) | Native ground truth (evidence) | Verdict |
 |---|----------|---------------|--------------------------------|---------|
-| 1 | ... | ... | `patches/<proj>/findings.md#...` or module anchor | OK / DIVERGES / UNKNOWN |
+| 1 | ... | ... | RE findings citation (workbench `patches/<proj>/findings.md#...`) or module anchor — always summarize the finding inline | OK / DIVERGES / UNKNOWN |
 
 Verdict rules: OK = matches or intentionally diverges (cite intent).
 DIVERGES = undocumented difference -> fix-list entry. UNKNOWN = not yet
@@ -58,5 +58,6 @@ Parked UNKNOWNs, each with one line on why it was parked.
 
 ## Related docs
 
-Links to `patches/*/findings*.md`, `docs/*` RE docs, and design specs this
-dossier drew from.
+Links to other dossiers first, then workbench sources (`patches/*/findings*.md`,
+RE docs, design specs) under a "Workbench documents" note — see any existing
+dossier for the pattern.

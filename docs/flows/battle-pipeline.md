@@ -166,7 +166,7 @@ sequenceDiagram
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
 | 0 | 1 | ~~Surgery save omits native's 0.25 base~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10: `coop_apply_player_stack_casualty` rolls `25 + skl×4` percent, capped 100. | `module_coop_scripts.py:7072–7077` |
-| 1 | 7 | ~~Dead ev 14 `return_to_campaign`~~ **Done** (`1dc8fec`, smoke 2026-07-11): constant removed, project-state row corrected. | `header_common.py` + `.claude/rules/project-state.md` |
+| 1 | 7 | ~~Dead ev 14 `return_to_campaign`~~ **Done** (`1dc8fec`, smoke 2026-07-11): constant removed, project-state row corrected. | `header_common.py` + workbench project-state doc |
 | 2 | 8 | ~~Dead `s57` reconnect write~~ **Done** (`fd0e088`, smoke 2026-07-11): write deleted; auto-rejoin, if ever wanted, gets its own design. | `src/asi/coop.c` |
 | 3 | 3 | Round-end check is reserve-blind and instant: consult remaining temp-party reserves and/or add a native-style settle delay (seconds since last spawn/death) before declaring the round over. Native's `all_enemies_defeated` cannot be reused server-side (returns FALSE with no local player agent) — extend the module-side check instead. There is also no retreat path. | `module_coop_mission_templates.py` end trigger (`:896–949`) |
 | 4 | 6 | Victory pays XP only. Native also pays hero gold shares, runs loot calculation/screen, and applies `battle_political_consequences` + `event_player_defeated_enemy_party`. Decide which consequences coop should port (gold at minimum) and add them to `coop_apply_battle_results`. ~~Urgent sub-piece: server-side battle disengage + beaten-party removal~~ **Done** (`f85c30e` + `d865990`, runtime-verified 2026-07-11) — resolved via dict party ids; the ev-17 local arm got the same `remove_party` treatment (`d82d879`, local win not yet re-smoked). | `module_coop_scripts.py` BATTLE PIPELINE section |
@@ -177,13 +177,15 @@ sequenceDiagram
 - Audit row 5 (engine per-player mission state after the end-of-battle mass
   kick): parked — impact is bounded because the battle server immediately
   restarts its mission and clients fully reconnect to the campaign server;
-  the wave-2 runtime smoke test (`docs/NEXT_SESSION.md`) exercises exactly
-  this path and is the cheaper verification.
+  the wave-2 runtime smoke test exercises exactly this path and is the
+  cheaper verification.
 
 ## Related docs
 
+Workbench documents (not part of the public export — see the citation
+note in `README.md`):
+
 - `docs/BATTLE_RESULTS_PIPELINE_AUDIT.md` — earlier results-pipeline audit.
-- `docs/superpowers/specs/2026-03-22-warband-coop-campaign-sync-design.md`.
+- `docs/superpowers/specs/2026-03-22-warband-coop-campaign-sync-design.md`
+  — original campaign-sync design.
 - `patches/WarbandDedicated/kb.h` / `findings.md` — campaign-server binary RE.
-- `docs/NEXT_SESSION.md` (wave-2) — handshake + casualty-core changes this
-  dossier reflects.

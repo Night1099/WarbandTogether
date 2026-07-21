@@ -4,6 +4,15 @@ One dossier per core flow. Each documents how the flow works (sequence,
 anchors, invariants) and audits it against native/engine ground truth
 (`OK`/`DIVERGES`/`UNKNOWN` verdicts). Template: `TEMPLATE.md`.
 
+> **Note on citations:** these dossiers are authored in the private
+> workbench repository this public repo is exported from. Evidence
+> citations pointing at paths that don't exist here — `patches/…`
+> (reverse-engineering findings and knowledge bases), `.claude/…`
+> (project-state notes), and `docs/…` files outside `docs/flows/`
+> (design specs, RE session notes) — refer to workbench documents.
+> The dossier text always summarizes the relevant finding inline, so
+> nothing here requires those files to follow the flow.
+
 | Flow | Dossier | Status |
 |------|---------|--------|
 | Battle pipeline (dedicated battle end-to-end) | `battle-pipeline.md` | audited |
@@ -14,8 +23,8 @@ anchors, invariants) and audits it against native/engine ground truth
 
 ## Engine findings map
 
-Which existing RE/audit material is relevant to each flow. Filled in as each
-dossier is written.
+Which existing RE/audit material is relevant to each flow (workbench
+documents — see the citation note above).
 
 | Flow | Relevant findings / docs |
 |------|--------------------------|
@@ -59,7 +68,7 @@ symptom of A7 (post-dedicated-battle stuck player — see the A7 row).
 | A3 | ✅ **verified** xp-sync (2) | ~~Local-fight XP overpays ~34% (no rand roll)~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10 (`pool 603 x roll 66% = 397` exact). Loot gold remains unpaid — owned by A7 | `module_game_menus.py` debrief |
 | A4 | ✅ **verified** party-screen (2) | ~~Troop upgrades are free~~ Gold cost fixed (`50f4ac1`) + runtime-verified 2026-07-10; server-side upgrade-XP decrement remains a minor authority-hardening follow-up | `module_coop_scripts.py:8865–8875` ev-11 arm |
 | A5 | ✅ siege (5) | Winning a **dedicated** siege never captures the center (the local path was also broken in practice — player_no-keyed mark; fixed + runtime-verified in `13ebcad`) | `module_coop_scripts.py` BATTLE PIPELINE |
-| A6 | ✅ **verified** siege (3) | ~~Attached defender parties sit out the siege~~ Fixed (`67239e5..d7955b7`) + runtime-verified 2026-07-19 — attachments fight as enemy1..N, proximity AI allies as ally1..N, per-party casualty round-trip. Follow-up: tighten attacker selection filter (see NEXT_SESSION.md) | `module_coop_scripts.py` `coop_write_battle_data` |
+| A6 | ✅ **verified** siege (3) | ~~Attached defender parties sit out the siege~~ Fixed (`67239e5..d7955b7`) + runtime-verified 2026-07-19 — attachments fight as enemy1..N, proximity AI allies as ally1..N, per-party casualty round-trip. Follow-up: tighten the attacker selection filter (tracked as an open follow-up) | `module_coop_scripts.py` `coop_write_battle_data` |
 | A7 | battle-pipeline (6) | Battle wins pay XP only — no gold/loot, prisoners, or `battle_political_consequences`. The player-blocking disengage sub-piece (stuck player + lingering 0-troop enemy) is **fixed + runtime-verified 2026-07-11** (`f85c30e`/`d82d879`/`d865990` — enemy parties resolved via dict ids, since the rejoiner's party is rebuilt); the economic/political consequences remain open | `module_coop_scripts.py` BATTLE PIPELINE |
 | A8 | siege (6) | Local-siege capture skips native consequences (lord fate, prisoners, relations, renown, war damage) | `module_coop_scripts.py` |
 | A9 | battle-pipeline (3) | Round-end is reserve-blind and instant (no settle delay); a team with unspawned waves loses when on-field agents hit zero; no retreat path | `module_coop_mission_templates.py:896–949` |
@@ -72,7 +81,7 @@ symptom of A7 (post-dedicated-battle stuck player — see the A7 row).
 | B2 | inventory (1) | No push-on-mutation: server-side inventory changes don't reach a live client until rejoin | `module_coop_scripts.py` ECONOMY/MISC push helpers |
 | B3 | inventory (2) | Inventory close-diff baseline is an open-time client-troop snapshot with no ready-gate (char-sync's documented receive-handler pattern not applied) | `module_scripts.py` `wse_window_opened` + recv arms |
 
-### C. Dead code / protocol-doc drift (`.claude/rules/project-state.md` fixes)
+### C. Dead code / protocol-doc drift
 
 | # | Flow (src) | What's wrong | Owner |
 |---|------------|--------------|-------|

@@ -1,6 +1,9 @@
 Warband Coop Mod -- Install
 ===========================
 
+Full step-by-step guide with troubleshooting:
+https://github.com/Night1099/WarbandTogether/blob/main/docs/INSTALL.md
+
 1. You need Mount & Blade: Warband (Steam). You do NOT need to install
    WSE2 yourself -- this zip ships the exact pinned WSE2 engine build
    (1.174 rev 1145) with the coop binary patches already applied. Do not
@@ -40,8 +43,9 @@ Notes
 -----
 - The winmm.dll is a proxy loader that forwards all exports to
   winmm_sys.dll (a copy of the system winmm). Do not replace winmm_sys.dll.
-- WSE2 binary patches to mb_warband_wse2.exe are applied at runtime; you
-  do not need to patch the game executable manually.
+- The binary patches (see docs\wse2-binary-patches.md) are on-disk
+  changes to mb_warband_wse2.exe; the shipped exe is already patched.
+  No manual patching is needed.
 - Port forwarding: If running on a public server, forward UDP/TCP ports
   7240-7247. Port 7242 (ENet IPC) is local-only; battle slots use fixed
   ports (7241/7243/7245/7247, one per BattleServer_<n>.txt slot). The

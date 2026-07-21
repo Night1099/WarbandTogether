@@ -89,7 +89,7 @@ sequenceDiagram
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
 | 1 | 2 | ~~Upgrades are free~~ Gold cost fixed (`50f4ac1`) + runtime-verified 2026-07-10. Remaining (minor, authority-hardening): decrement stack upgrade XP server-side so a modified client can't upgrade without it. | `module_coop_scripts.py:8865–8875` ev-11 arm |
-| 2 | 4 | ~~Dead ev 8/9~~ **Done** (`1dc8fec`, smoke 2026-07-11): constants removed, project-state table corrected. | `header_common.py` + `.claude/rules/project-state.md` |
+| 2 | 4 | ~~Dead ev 8/9~~ **Done** (`1dc8fec`, smoke 2026-07-11): constants removed, project-state table corrected. | `header_common.py` + workbench project-state doc |
 
 ## Open questions
 
@@ -99,7 +99,11 @@ sequenceDiagram
 
 ## Related docs
 
+- `xp-sync.md` — ev 22 upgradeable push and snapshot-slot machinery.
+
+Workbench documents (not part of the public export — see the citation
+note in `README.md`):
+
 - `docs/RE_NATIVE_SCREENS.md`, `docs/Screen_Session.md` — native window
   hooks behind `wse_window_opened`.
-- `xp-sync.md` — ev 22 upgradeable push and snapshot-slot machinery.
-- `.claude/rules/project-state.md` — C/DLL layer (IPC-only since B8).
+- project-state notes — C/DLL layer architecture (IPC-only since B8).

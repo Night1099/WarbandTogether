@@ -99,7 +99,7 @@ sequenceDiagram
 
 | # | Behavior | Ours (anchor) | Native ground truth (evidence) | Verdict |
 |---|----------|---------------|--------------------------------|---------|
-| 1 | Server-side inventory mutations (quest rewards, script grants) are pushed to the client only on join/rejoin — there is no push-on-mutation path | pushes exist only at `:8221–8222` (join) | The mod's own authority model ("clients receive pushes", `.claude/rules/project-state.md`) implies server mutations should reach a live client; in native SP the question doesn't arise (single process). A client's inventory screen can show stale state until rejoin. | DIVERGES |
+| 1 | Server-side inventory mutations (quest rewards, script grants) are pushed to the client only on join/rejoin — there is no push-on-mutation path | pushes exist only at `:8221–8222` (join) | The mod's own documented authority model ("clients receive pushes") implies server mutations should reach a live client; in native SP the question doesn't arise (single process). A client's inventory screen can show stale state until rejoin. | DIVERGES |
 | 2 | Close-diff baseline is an **open-time snapshot of the client troop**, ungated | `module_scripts.py:51154–51188`; differ at `module_simple_triggers.py:4544–4600` has no ready-gate | The char-sync flow implements the documented lesson ("baseline must come from receive handlers, not client troop") with a `snap_ready` gate (`module_coop_scripts.py:6817–6821`); the inventory flow predates/skips it. A server push landing while the screen is open gets echoed back as a client edit (benign echo today only because pushes never occur mid-session — see row 1). | DIVERGES |
 | 3 | Battle equip: gear rebuilt from campaign state on spawn; consumables not decremented in campaign inventory after battle | `module_coop_scripts.py:3025–3044`, `:3002–3024` | Native refills ammo/consumables after battles (campaign inventory is not charge-tracked) — rebuilding from campaign state yields the same net behavior | OK |
 | 4 | Orphaned raw-slot 0–19 mirror deleted from the ev-15 recv arm (`1dc8fec`); the troop-struct writes that feed the native inventory screen remain. Smoke passed 2026-07-11 | ev-15 recv arm, `module_coop_scripts.py` | The actual diff baseline lives at slots 160–179 (`module_constants.py:1944–1945`), written by `wse_window_opened`/presentation — nothing read the raw-slot mirror | OK |
@@ -113,7 +113,7 @@ sequenceDiagram
 | 1 | 1 | No push-on-mutation: add equip/bag pushes wherever server-side scripts mutate a player troop's inventory (or a periodic dirty-flag push), so live clients don't go stale until rejoin. | `module_coop_scripts.py` ECONOMY/MISC push helpers |
 | 2 | 2 | Move the inventory diff baseline to receive handlers + add a ready-gate, mirroring the char-sync pattern (removes the mid-session-push echo race and aligns with the documented lesson). | `module_scripts.py` `wse_window_opened` + `module_coop_scripts.py` recv arms |
 | 3 | 4 | ~~Orphaned raw-slot 0–19 mirror~~ **Done** (`1dc8fec`, smoke 2026-07-11): deleted; troop-struct writes kept. | `module_coop_scripts.py` ev-15 recv arm |
-| 4 | 5 | ~~Dead ev 13~~ **Done** (`1dc8fec`, smoke 2026-07-11): constant + handler removed, project-state row corrected. B2 re-adds a re-request only if its design needs one. | `header_common.py` + `module_coop_scripts.py` + `.claude/rules/project-state.md` |
+| 4 | 5 | ~~Dead ev 13~~ **Done** (`1dc8fec`, smoke 2026-07-11): constant + handler removed, project-state row corrected. B2 re-adds a re-request only if its design needs one. | `header_common.py` + `module_coop_scripts.py` + workbench project-state doc |
 | 5 | 6 | ~~Validate `inv_change` server-side~~ **Done** (`50f4ac1`, runtime-verified 2026-07-10): batch count-validation against the pre-edit dict baseline in `coop_inv_sync_back_validate_and_save`, whole-batch revert + re-push on violation. | `module_coop_scripts.py` ev-14/15 arms |
 
 ## Open questions
@@ -123,8 +123,13 @@ already covered by `docs/RE_NATIVE_SCREENS.md`; no new engine RE required).
 
 ## Related docs
 
-- `docs/RE_NATIVE_SCREENS.md`, `docs/SP_SCREEN_RECREATION.md` — native
-  window hook RE (source of the `wse_window_opened` mechanism).
-- `docs/superpowers/plans/2026-04-14-native-inventory-screen.md`.
 - `xp-sync.md` — shared snapshot-slot machinery on `trp_temp_troop`.
 - Trade flow (ch49 20–22 / ch125 29–32): separate concern, no dossier yet.
+
+Workbench documents (not part of the public export — see the citation
+note in `README.md`):
+
+- `docs/RE_NATIVE_SCREENS.md`, `docs/SP_SCREEN_RECREATION.md` — native
+  window hook RE (source of the `wse_window_opened` mechanism).
+- `docs/superpowers/plans/2026-04-14-native-inventory-screen.md` — the
+  native-inventory-screen implementation plan.

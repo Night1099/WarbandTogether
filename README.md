@@ -12,6 +12,8 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 > [Releases page](https://github.com/Night1099/WarbandTogether/releases)
 > and report what breaks via Issues.
 
+**Just want to play?** Follow the step-by-step [install guide](docs/INSTALL.md).
+
 **Working:**
 - WSE2 campaign server (dedicated, port 7240) with multiple players on the shared campaign map
 - **Battle server pool** — up to 4 dedicated battle servers (ports 7241/7243/7245/7247, one per slot), allocated per encounter; the pool auto-adapts to however many slots are running
@@ -29,7 +31,7 @@ See `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync,
 ## Requirements
 
 - Mount & Blade: Warband 1.174
-- [WSE2](https://github.com/Ruslan-700/WSE2-Releases/releases/tag/v1.1.4.5) **pinned at revision 1145** (v1.1.4.5, Mar 2026) — all binary patches (`docs/wse2-binary-patches.md`) and hook addresses are keyed to these exact binaries; upgrading WSE2 is a dedicated porting task, not a drop-in
+- [WSE2](https://forums.taleworlds.com/index.php?threads/wse2-warband-script-enhancer-2.371084/) **pinned at revision 1145** (v1.1.4.5, Mar 2026) — all binary patches (`docs/wse2-binary-patches.md`) and hook addresses are keyed to these exact binaries; upgrading WSE2 is a dedicated porting task, not a drop-in. Release zips ship these binaries pre-patched — you only need your own WSE2 install when building from source
 - Python 2.7 (module system build)
 - Visual Studio with MSVC x86 (DLL builds)
 
@@ -39,7 +41,7 @@ See `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync,
    - Module system: full 27-step chain — writes `.txt` output straight into `Modules/NativeCoop/`
    - C layer: `build\build.bat` (client ASI), `build\build_plugin.bat` (host plugin), `build\build_loader.bat` (winmm proxy)
    - Every successful C build ends with `build\deploy.bat`, which copies the artifacts into the game directory automatically
-2. The client `mb_warband_wse2.exe` needs four small binary patches (auto-connect, ASLR off, writable .text, dual-port LAN scan) — see `docs/wse2-binary-patches.md`
+2. The client `mb_warband_wse2.exe` needs four small binary patches (auto-connect, ASLR off, writable .text, dual-port LAN scan) — see `docs/wse2-binary-patches.md`. The exe in a release zip is already patched
 3. Launch servers from the game directory:
    - `coop_launch_all.bat` (campaign server + N battle slots in one go), or individually:
    - `coop_campaign_server.bat` (campaign, port 7240)
@@ -80,7 +82,7 @@ wse2work/Native-Coop-master/   — Module system (the bulk of the mod's logic)
   module_coop_mission_templates.py — Coop battle mission template
   module_game_menus.py         — Encounter flow, battle launch
 deploy/                 — Server configs, launch scripts, coop.ini template
-docs/                   — BUILD.md, wse2-binary-patches.md, flows/ (per-flow dossiers)
+docs/                   — INSTALL.md, BUILD.md, wse2-binary-patches.md, flows/ (per-flow dossiers)
 ```
 
 ## How It Works

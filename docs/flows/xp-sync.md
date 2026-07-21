@@ -124,14 +124,14 @@ sequenceDiagram
 | 3 | Local-fight XP applied entirely as party share (`party_add_xp` distribution) | `module_coop_scripts.py:8956–8959`, `:9534–9547` | Native SP applies the whole pool via `party_add_xp` to the main party (`module_scripts.py:15373`) — same semantics | OK |
 | 4 | One XP-credit path reaches heroes on the dedicated battle path: the campaign-side hero restore skips the `@hero_{i}_xp` re-apply (`$g_coop_skip_hero_xp_restore` set around the restore in `coop_apply_battle_results`, `:9430–9432` @ `fc1f204`), so the computed Phase 1/2 pool share is the sole credit — SP parity. Fixed in `50f4ac1`, runtime-verified 2026-07-10 (companion gained a normal SP-sized share once; not double, not zero) | `module_coop_scripts.py:5251`, `:9430–9432` (@ `fc1f204`) | RE-confirmed (`patches/Warband/findings.md` "Engine mission kill-XP paths", `patches/WSE2Dedicated/kb.h`): the WSE2 dedicated server writes hero `m_experience` per kill for game types 11/12 (writer `0x487A90`), with **no game-type gate** — same mechanism the client-side local-fight path explicitly undoes (`:6798–6809`). The dedicated path previously round-tripped it through `@hero_{i}_xp` AND added the pool share on top (heroes paid twice); the skip flag makes the pool share canonical. | OK |
 | 5 | Event 22 renamed `party_stack_num_upgradeable` (constant + script `coop_send_party_upgradeable_to_client`) and project-state row corrected — the name now matches the payload. Fixed in `1dc8fec`, runtime smoke passed 2026-07-11 | `module_coop_scripts.py` sender/recv arm; `header_common.py` | Sender uses `party_stack_get_num_upgradeable`, receiver `party_stack_set_num_upgradeable` — misnaming was doc/constant drift only | OK |
-| 6 | Level + points: level derived from XP by the client engine; point pools pushed server-authoritatively (ev 19); AGI WP bonus intentionally absent outside native UI | `module_coop_scripts.py:6716–6730`, `:6781–6792` | Engine derives level from XP identically on both sides; the AGI/WP and proficiency-cost deviations are known, documented engine lessons (`.claude/rules/project-state.md` Key Lessons) | OK |
+| 6 | Level + points: level derived from XP by the client engine; point pools pushed server-authoritatively (ev 19); AGI WP bonus intentionally absent outside native UI | `module_coop_scripts.py:6716–6730`, `:6781–6792` | Engine derives level from XP identically on both sides; the AGI/WP and proficiency-cost deviations are known, documented engine lessons (workbench project-state notes) | OK |
 
 ## Fix list
 
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
 | 1 | 2 | ~~Local debrief omits the native rand(50,100)/100 scaling~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10. Loot gold remains unpaid — owned by the battle-consequences item (README A7). | `module_game_menus.py` debrief |
-| 2 | 5 | ~~Event 22 misnamed/misdocumented~~ **Done** (`1dc8fec`, smoke 2026-07-11): renamed `party_stack_num_upgradeable` (constant + script + project-state row). | `header_common.py` + `.claude/rules/project-state.md` |
+| 2 | 5 | ~~Event 22 misnamed/misdocumented~~ **Done** (`1dc8fec`, smoke 2026-07-11): renamed `party_stack_num_upgradeable` (constant + script + project-state row). | `header_common.py` + workbench project-state doc |
 | 3 | 4 | ~~Hero XP double-credited on the dedicated battle path~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10 — `$g_coop_skip_hero_xp_restore` suppresses the `@hero_{i}_xp` re-apply; the pool share is the canonical (sole) hero credit. | `module_coop_scripts.py:5251`, `:9430–9432` |
 
 ## Open questions
@@ -143,6 +143,10 @@ sequenceDiagram
 ## Related docs
 
 - `battle-pipeline.md` — Phase 1/2 mechanics, casualty basis, xp_rand source.
+
+Workbench documents (not part of the public export — see the citation
+note in `README.md`):
+
 - `docs/SYNC_REDESIGN.md`, `docs/sync-systems/` — original char-sync design.
 - `docs/superpowers/plans/2026-04-10-sp-xp-battle-parity.md` — the SP-parity
   work this flow implements.

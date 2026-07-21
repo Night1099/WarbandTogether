@@ -111,7 +111,7 @@ The LAN server browser probes only one port (default 7240). This patch makes it 
 
 | Field | Offset | Original | Patched | Effect |
 |-------|--------|----------|---------|--------|
-| DllCharacteristics (ASLR) | 0x1AE | `0x8140` | `0x8100` | Disable DYNAMIC_BASE — binary loads at preferred base 0x560000 |
+| DllCharacteristics (ASLR) | 0x1AE | `0x8140` | `0x8100` | Disable DYNAMIC_BASE — binary loads at its preferred base (0x400000) |
 | .text Characteristics | 0x26C | `0x60000020` | `0xE0000020` | Add IMAGE_SCN_MEM_WRITE — cave flag byte is writable |
 
 The code cave for this patch is applied by maintainer tooling; the release install package ships a client exe with all patches already applied.

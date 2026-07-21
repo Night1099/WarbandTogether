@@ -3,7 +3,7 @@ REM package_mod.bat -- assemble a shareable coop mod package
 REM
 REM Collects the module data, DLLs, ASIs, configs, and server scripts from
 REM the game directory and this repo, then zips them into
-REM   Z:\Ben\warband\warband_coop_<timestamp>.zip
+REM   %COOP_PKG_DIR%\warband_coop_<timestamp>.zip   (default: <repo>\dist)
 REM
 REM Layout of the produced zip mirrors the Warband install root, so the
 REM recipient can extract into their MountBlade Warband directory directly.
@@ -14,11 +14,12 @@ setlocal enabledelayedexpansion
 
 REM ---- Config -----------------------------------------------------------
 
-set "REPO_ROOT=D:\GIT\M-BWarband-COOP"
-set "GAME_DIR=F:\SteamLibrary\steamapps\common\MountBlade Warband"
-if defined GAMEDIR set "GAME_DIR=%GAMEDIR%"
+for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
+call "%~dp0find_gamedir.bat"
+set "GAME_DIR=%GAMEDIR%"
 set "MODULE_NAME=NativeCoop"
-set "DEST_DIR=Z:\Ben\warband"
+if not defined COOP_PKG_DIR set "COOP_PKG_DIR=%REPO_ROOT%\dist"
+set "DEST_DIR=%COOP_PKG_DIR%"
 
 REM ---- Locate tools (use absolute paths; cmd PATH is unreliable) --------
 
@@ -61,6 +62,10 @@ REM ---- Pre-flight -------------------------------------------------------
 
 if not exist "%REPO_ROOT%" (
     echo MISSING REPO: %REPO_ROOT%
+    goto :error
+)
+if not defined GAME_DIR (
+    echo MISSING GAME DIR -- set GAMEDIR to your MountBlade Warband directory
     goto :error
 )
 if not exist "%GAME_DIR%" (
