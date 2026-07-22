@@ -98,7 +98,7 @@ docs/                   — INSTALL.md, BUILD.md, wse2-binary-patches.md, flows/
 ```ini
 [Coop]
 Port=7240
-HostIP=127.0.0.1
+HostIP=YOURIP
 BattlePort=7241
 Module=NativeCoop
 ```
