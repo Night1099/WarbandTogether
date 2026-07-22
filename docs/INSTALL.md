@@ -46,7 +46,7 @@ Open `coop.ini` in the game root with any text editor:
 ```ini
 [Coop]
 Port=7240
-HostIP=127.0.0.1
+HostIP=YOURIP
 BattlePort=7241
 Module=NativeCoop
 ```
