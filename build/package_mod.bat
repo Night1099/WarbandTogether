@@ -20,6 +20,7 @@ set "GAME_DIR=%GAMEDIR%"
 set "MODULE_NAME=NativeCoop"
 if not defined COOP_PKG_DIR set "COOP_PKG_DIR=%REPO_ROOT%\dist"
 set "DEST_DIR=%COOP_PKG_DIR%"
+if not defined WSE2_ZIP set "WSE2_ZIP=%REPO_ROOT%\third_party\WSE2.zip"
 
 REM ---- Locate tools (use absolute paths; cmd PATH is unreliable) --------
 
@@ -83,6 +84,20 @@ if not exist "%DEST_DIR%" (
     goto :error
 )
 
+REM ---- WSE2 distribution (extracted first; patched files overwrite) -----
+REM Ship the COMPLETE upstream WSE2 rev-1145 zip verbatim so no engine
+REM resource is ever missing (CommonRes brf, languages, msvcr120, ...).
+REM Everything staged after this overwrites the stock copies -- in
+REM particular the coop-patched exes and our server_config.ini.
+
+if not exist "%WSE2_ZIP%" (
+    echo MISSING: %WSE2_ZIP%
+    echo Place the pinned WSE2 rev-1145 release zip there ^(or set WSE2_ZIP^).
+    goto :error
+)
+echo [package_mod] Extracting WSE2 distribution: %WSE2_ZIP%
+"%TAR_EXE%" -x -f "%WSE2_ZIP%" -C "%STAGE_DIR%" || goto :error
+
 REM ---- DLLs and ASIs ----------------------------------------------------
 REM Prefer freshly built files from the repo root, fall back to game dir.
 
@@ -111,6 +126,10 @@ for %%F in (mb_warband_wse2.exe mb_warband_wse2_dedicated.exe mb_warband_wse2_de
     copy /y "%GAME_DIR%\%%F" "%STAGE_DIR%\%%F" >nul || goto :error
     echo   %%F
 )
+
+REM The WSE2 zip ships a stock server_config.ini at the root, which is the
+REM path the campaign launch script reads -- overwrite it with ours.
+copy /y "%REPO_ROOT%\deploy\configs\server_config.ini" "%STAGE_DIR%\server_config.ini" >nul || goto :error
 
 REM ---- coop.ini ---------------------------------------------------------
 REM The package ships the CLIENT ini (Mode=client, HostIP of the campaign
