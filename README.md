@@ -38,7 +38,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/
 ## Quick Start
 
 1. Build everything (see `docs/BUILD.md`):
-   - Module system: full 27-step chain — writes `.txt` output straight into `Modules/NativeCoop/`
+   - Module system: full 29-step chain — writes `.txt` output straight into `Modules/NativeCoop/`
    - C layer: `build\build.bat` (client ASI), `build\build_plugin.bat` (host plugin), `build\build_loader.bat` (winmm proxy)
    - Every successful C build ends with `build\deploy.bat`, which copies the artifacts into the game directory automatically
 2. The client `mb_warband_wse2.exe` needs four small binary patches (auto-connect, ASLR off, writable .text, dual-port LAN scan) — see `docs/wse2-binary-patches.md`. The exe in a release zip is already patched

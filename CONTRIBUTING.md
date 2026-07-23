@@ -7,7 +7,7 @@ pull requests are welcome.
 
 See `docs/BUILD.md` for the full build chain:
 
-- **Module system**: Python 2.7, full 27-step build (partial builds
+- **Module system**: Python 2.7, full 29-step build (partial builds
   produce "Invalid Quick String ID" crashes at runtime).
 - **C layer**: MSVC x86 — `build/build.bat` (client ASI),
   `build/build_plugin.bat` (host plugin), `build/build_loader.bat`
