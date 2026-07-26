@@ -98,6 +98,9 @@ if not exist "%WSE2_ZIP%" (
 echo [package_mod] Extracting WSE2 distribution: %WSE2_ZIP%
 "%TAR_EXE%" -x -f "%WSE2_ZIP%" -C "%STAGE_DIR%" || goto :error
 
+REM Debug symbols are dead weight for players (several MB per exe).
+del /s /q "%STAGE_DIR%\*.pdb" >nul 2>&1
+
 REM ---- DLLs and ASIs ----------------------------------------------------
 REM Prefer freshly built files from the repo root, fall back to game dir.
 
