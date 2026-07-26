@@ -1,7 +1,9 @@
 # Flow: XP Sync (char XP, stack upgrades, battle XP)
 
 **Status:** AUDITED
-**Validated against commit:** `fd0e088`
+**Validated against commit:** `632466c` (A7 loot-gold note closed —
+applier merged `4ba5786`, runtime-verified 2026-07-24; A9 victory-gated
+XP pool noted; prior stamp `fd0e088`)
 
 ## Scope
 
@@ -61,8 +63,8 @@ sequenceDiagram
 | 3c | Post-local-fight char sync re-push | `module_coop_scripts.py` | 9130–9132 | ev-17 arm after `coop_apply_xp_shares` + save — without it client player/companion XP is stale until the next rejoin or C-screen open |
 | 4 | Client receive: snapshot mirror per field | `module_coop_scripts.py` | 6749–6792 | `slot_coop_char_snap_*` on `trp_temp_troop` |
 | 5 | Sync-done gate for diff poller | `module_coop_scripts.py` | 6817–6821 | `$g_coop_char_snap_ready` |
-| 6 | Push triggers on rejoin | `module_coop_scripts.py` | 8221–8224 | `coop_send_char_sync_to_client`, `coop_send_party_xp_to_client` |
-| 7 | Stack upgradeable push (ev 22 sender) | `module_coop_scripts.py` | 9678–9693 | `coop_send_party_xp_to_client` (`party_stack_get_num_upgradeable`) |
+| 6 | Push triggers on rejoin | `module_coop_scripts.py` | 8221–8224 | `coop_send_char_sync_to_client`, `coop_send_party_upgradeable_to_client` |
+| 7 | Stack upgradeable push (ev 22 sender) | `module_coop_scripts.py` | 9678–9693 | `coop_send_party_upgradeable_to_client` (`party_stack_get_num_upgradeable`) |
 | 8 | Stack upgradeable client apply | `module_coop_scripts.py` | 8488–8498 | `party_stack_set_num_upgradeable` |
 | 9 | Battle XP pool (dedicated) | `module_coop_scripts.py` | 9488–9516 | `coop_compute_sp_xp_pool_from_dict` |
 | 10 | Shared rand roll + player strength snapshot (battle server) | `module_coop_scripts.py` | 4728–4760 | in `coop_copy_parties_to_file_mp` |
@@ -78,8 +80,8 @@ sequenceDiagram
 ## State & events
 
 - **Events:** ch125: `char_sync_attr/skill/prof`=16/17/18, `char_sync_points`=19,
-  `char_sync_done`=20, `char_sync_xp`=21, `party_stack_xp`=22 (carries
-  **num_upgradeable**), `char_sync_gold`=23, `char_sync_health`=24,
+  `char_sync_done`=20, `char_sync_xp`=21, `party_stack_num_upgradeable`=22
+  (renamed from `party_stack_xp` in C5), `char_sync_gold`=23, `char_sync_health`=24,
   `hero_sync_xp`=43 (companion troop id + xp, signed-delta apply). ch49:
   `request_char_sync`=7, `local_fight_result`=17 (`header_common.py`).
 - **Dict keys:** char dicts: `@char_battle_pending`, `@char_pending_party_xp`,
@@ -111,6 +113,9 @@ sequenceDiagram
   `add_xp_to_troop` call (`:4948–4956`).
 - One shared `@battle_xp_rand` roll per battle (`:4728–4735`) keeps
   multi-player relative shares deterministic.
+- The dedicated Phase 1 pool is **victory-gated** since A9 (`632466c`):
+  it is computed only when `@battle_result == 1` — losses and retreats
+  pay no XP pool.
 - Engine lessons (project-state): variable proficiency cost — client engine
   is cost authority; `troop_raise_proficiency` does not consume WP; AGI +5 WP
   bonus is native-UI-only.
@@ -120,7 +125,7 @@ sequenceDiagram
 | # | Behavior | Ours (anchor) | Native ground truth (evidence) | Verdict |
 |---|----------|---------------|--------------------------------|---------|
 | 1 | Dedicated battle XP pool: `(level+10)^2/10` per enemy casualty, cap 40000, × shared rand 50–100 | `module_coop_scripts.py:9488–9516`, `:4734` | Matches native `party_give_xp_and_gold` basis and formula (`module_scripts.py:15341–15373`, called with `p_total_enemy_casualties` at `module_game_menus.py:4674`); minor deltas documented in `battle-pipeline.md` audit row 2 | OK |
-| 2 | Local-fight XP: same pool formula over actual casualties, cap 40000, **× rand(50,100)/100 after the cap** (native parity). Fixed in `50f4ac1`, runtime-verified 2026-07-10 (victory screen `pool 603 x roll 66% = 397`, exact integer match). Loot gold is still not paid — that is the battle-consequences gap, tracked in `battle-pipeline.md` row 6 / README A7 | `module_game_menus.py` debrief (roll after `val_min` cap) | Native applies × rand(50,100)/100 after the cap (`module_scripts.py:15369–15371`) and also pays loot gold via `party_give_xp_and_gold` | OK |
+| 2 | Local-fight XP: same pool formula over actual casualties, cap 40000, **× rand(50,100)/100 after the cap** (native parity). Fixed in `50f4ac1`, runtime-verified 2026-07-10 (victory screen `pool 603 x roll 66% = 397`, exact integer match). Loot gold is now paid by the A7 consequence applier (merged `4ba5786`, runtime-verified 2026-07-24) | `module_game_menus.py` debrief (roll after `val_min` cap) | Native applies × rand(50,100)/100 after the cap (`module_scripts.py:15369–15371`) and also pays loot gold via `party_give_xp_and_gold` | OK |
 | 3 | Local-fight XP applied entirely as party share (`party_add_xp` distribution) | `module_coop_scripts.py:8956–8959`, `:9534–9547` | Native SP applies the whole pool via `party_add_xp` to the main party (`module_scripts.py:15373`) — same semantics | OK |
 | 4 | One XP-credit path reaches heroes on the dedicated battle path: the campaign-side hero restore skips the `@hero_{i}_xp` re-apply (`$g_coop_skip_hero_xp_restore` set around the restore in `coop_apply_battle_results`, `:9430–9432` @ `fc1f204`), so the computed Phase 1/2 pool share is the sole credit — SP parity. Fixed in `50f4ac1`, runtime-verified 2026-07-10 (companion gained a normal SP-sized share once; not double, not zero) | `module_coop_scripts.py:5251`, `:9430–9432` (@ `fc1f204`) | RE-confirmed (`patches/Warband/findings.md` "Engine mission kill-XP paths", `patches/WSE2Dedicated/kb.h`): the WSE2 dedicated server writes hero `m_experience` per kill for game types 11/12 (writer `0x487A90`), with **no game-type gate** — same mechanism the client-side local-fight path explicitly undoes (`:6798–6809`). The dedicated path previously round-tripped it through `@hero_{i}_xp` AND added the pool share on top (heroes paid twice); the skip flag makes the pool share canonical. | OK |
 | 5 | Event 22 renamed `party_stack_num_upgradeable` (constant + script `coop_send_party_upgradeable_to_client`) and project-state row corrected — the name now matches the payload. Fixed in `1dc8fec`, runtime smoke passed 2026-07-11 | `module_coop_scripts.py` sender/recv arm; `header_common.py` | Sender uses `party_stack_get_num_upgradeable`, receiver `party_stack_set_num_upgradeable` — misnaming was doc/constant drift only | OK |
@@ -130,7 +135,7 @@ sequenceDiagram
 
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
-| 1 | 2 | ~~Local debrief omits the native rand(50,100)/100 scaling~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10. Loot gold remains unpaid — owned by the battle-consequences item (README A7). | `module_game_menus.py` debrief |
+| 1 | 2 | ~~Local debrief omits the native rand(50,100)/100 scaling~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10. ~~Loot gold unpaid~~ **Done** by the A7 consequence applier (merged `4ba5786`, runtime-verified 2026-07-24 — see `battle-pipeline.md` row 6). | `module_game_menus.py` debrief |
 | 2 | 5 | ~~Event 22 misnamed/misdocumented~~ **Done** (`1dc8fec`, smoke 2026-07-11): renamed `party_stack_num_upgradeable` (constant + script + project-state row). | `header_common.py` + workbench project-state doc |
 | 3 | 4 | ~~Hero XP double-credited on the dedicated battle path~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10 — `$g_coop_skip_hero_xp_restore` suppresses the `@hero_{i}_xp` re-apply; the pool share is the canonical (sole) hero credit. | `module_coop_scripts.py:5251`, `:9430–9432` |
 

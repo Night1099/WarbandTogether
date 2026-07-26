@@ -14519,16 +14519,10 @@ game_menus = [
         (assign, reg11, "$g_encounter_enemy_count"),
     ],
     [
-      ("encounter_attack",
-      [
-      ],
-      "Charge the enemy!",
-      [
-        (multiplayer_send_int_to_server, multiplayer_event_multiplayer_campaign_client_events, multiplayer_event_multiplayer_campaign_start_battle),
-        (assign, "$g_coop_encounter_done", 1),
-        (change_screen_return),
-      ]),
-
+      # One dedicated-battle entry only: a second "Charge the enemy!" option
+      # used to send the same start_battle event WITHOUT arming
+      # $g_coop_battle_requested, so the ev-10 reply landed in the
+      # non-initiator arm -- no auto-connect, no initiator rights (retreat).
       ("encounter_attack_mp",
       [
       ],

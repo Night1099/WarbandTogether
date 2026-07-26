@@ -37,7 +37,14 @@ https://github.com/Night1099/WarbandTogether/blob/main/docs/INSTALL.md
    - coop_battle_server_<n>.bat (0-3)  -- runs a battle server slot (run multiple for pool)
    - coop_client2.bat                  -- example client launcher
    Allow the battle-pool ports through Windows Firewall (once, as admin):
-      netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7267
+      netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7267 profile=any
+   IMPORTANT: profile=any matters. The allow rules Windows creates from
+   its "allow access?" popups are often scoped to the Public profile
+   only; on a Private (home) network they do nothing and remote clients
+   get "Unable to connect" while local play still works. If remote joins
+   ever break and the servers are running, re-check this rule exists and
+   covers all profiles -- firewall resets and Windows updates have been
+   known to remove it.
 
 Notes
 -----

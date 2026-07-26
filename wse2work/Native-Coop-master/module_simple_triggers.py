@@ -4490,23 +4490,30 @@ simple_triggers = [
           (call_script, "script_coop_char_client_diff_and_send"),
       (try_end),
 
-      # --- Inventory screen close ---
-      # Simple triggers only run on the campaign map, not while native
-      # windows are open. So open==1 here means inventory just closed.
-      (try_begin),
-          (eq, "$g_coop_inv_screen_open", 1),
-          (assign, "$g_coop_inv_screen_open", 2),
-          (call_script, "script_coop_inv_client_diff_and_send"),
-      (try_end),
-
       # --- Trade screen close ---
       # trade_screen_open: 0=idle, 1=open (set when trade_sync_done received),
       # 2=close processed. Simple triggers pause during native trade, so
-      # open==1 here means trade just closed.
+      # open==1 here means trade just closed. MUST run before the
+      # inventory-close block: the trade diff suppresses the inventory
+      # diff for this close (the server re-pushes authoritative inventory
+      # after trade_done instead).
       (try_begin),
           (eq, "$g_coop_trade_screen_open", 1),
           (assign, "$g_coop_trade_screen_open", 2),
           (call_script, "script_coop_trade_client_diff_and_send"),
+      (try_end),
+
+      # --- Inventory screen close ---
+      # Simple triggers only run on the campaign map, not while native
+      # windows are open. So open==1 here means inventory just closed.
+      # snap_ready gate: if the server's baseline push hasn't landed yet,
+      # wait until it does before running the diff (char-screen pattern).
+      (try_begin),
+          (eq, "$g_coop_inv_screen_open", 1),
+          (eq, "$g_coop_inv_snap_ready", 1),
+          (assign, "$g_coop_inv_screen_open", 2),
+          (assign, "$g_coop_inv_snap_ready", 0),
+          (call_script, "script_coop_inv_client_diff_and_send"),
       (try_end),
    ]),
 

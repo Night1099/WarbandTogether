@@ -3045,6 +3045,11 @@ scripts = [
                     # Hostile encounter (original path)
                     (party_get_battle_opponent, reg13, ":player_party"),
                     (display_message, "@battle_opponent {reg13}"),
+                    # Stash the opponent for the local-fight result arm: the
+                    # id is authoritative here (script param), and the
+                    # rejoin around a local fight rebuilds the party, so
+                    # ev-17 cannot re-derive it (project-state lesson).
+                    (call_script, "script_coop_char_local_enemy_set", ":player_no", ":encountered_party"),
                     # Send terrain type so client can select correct battle scene
                     (party_get_current_terrain, ":terrain", ":player_party"),
                     (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_player_start_encounter, ":encountered_party", ":encountered_party_2", ":terrain"),
@@ -10307,7 +10312,17 @@ scripts = [
         (store_script_param, ":value_3", 5),
         (store_script_param, ":value_4", 6),
 		(call_script, "script_multiplayer_campaign_client_events", ":player_no", ":value_1", ":value_2", ":value_3", ":value_4"),
-        
+      (else_try),
+        # Coop battle client->server events (ev 126). Must live in this
+        # ungated half: the CLIENT EVENTS half below is skipped on
+        # dedicated servers, which is where these arrive.
+        (eq, ":event_type", multiplayer_event_coop_send_to_server),
+        (store_script_param, ":coop_v3", 3),
+        (store_script_param, ":coop_v4", 4),
+        (store_script_param, ":coop_v5", 5),
+        (store_script_param, ":coop_v6", 6),
+        (call_script, "script_coop_receive_network_message", ":player_no", ":event_type", ":coop_v3", ":coop_v4", ":coop_v5", ":coop_v6"),
+
       #INVASION MODE START
 	  (else_try),
 	  
@@ -11029,7 +11044,8 @@ scripts = [
           (store_script_param, ":value_4", 6),
 		  (call_script, "script_multiplayer_campaign_server_events", ":value_1", ":value_2", ":value_3", ":value_4"),
 		(else_try),
-		  (this_or_next|eq, ":event_type", multiplayer_event_coop_send_to_server),
+		  # ev 126 (client->server) is handled in the ungated SERVER EVENTS
+		  # half above; only the server->client direction belongs here.
 		  (eq, ":event_type", multiplayer_event_coop_send_to_player),
 		  (store_script_param, ":coop_v3", 3),
 		  (store_script_param, ":coop_v4", 4),
@@ -51177,35 +51193,15 @@ scripts = [
         
         (try_begin),
             (eq, ":window_no", window_inventory),
-            # Inventory data pre-warmed on join. On re-open, diff previous
-            # session's changes before taking a fresh snapshot.
-            (multiplayer_get_my_player, ":my_player"),
-            (player_get_troop_id, ":my_troop", ":my_player"),
-
-            # --- Fresh snapshot for this session ---
-            # The 0.5s poller handles the diff immediately after close
-            # (simple triggers only run on campaign map, not during native windows).
+            # B3: the close-diff baseline comes from receive handlers, not an
+            # open-time snapshot of the client troop. Request an authoritative
+            # re-push; ev 15/25 mirror into the snap slots and ev 26 flips
+            # snap_ready. The 0.5s poller runs the close diff only when
+            # snap_ready=1 (same pattern as the character window below).
             (assign, "$g_coop_inv_screen_open", 1),
-
-            # Snapshot equipment slots 0-9
-            (try_for_range, ":slot", 0, 10),
-                (troop_get_inventory_slot, ":item", ":my_troop", ":slot"),
-                (troop_get_inventory_slot_modifier, ":imod", ":my_troop", ":slot"),
-                (store_add, ":snap_item", slot_coop_inv_snap_equip_item_begin, ":slot"),
-                (troop_set_slot, "trp_temp_troop", ":snap_item", ":item"),
-                (store_add, ":snap_mod", slot_coop_inv_snap_equip_mod_begin, ":slot"),
-                (troop_set_slot, "trp_temp_troop", ":snap_mod", ":imod"),
-            (try_end),
-            # Snapshot bag slots 10-105
-            (try_for_range, ":slot", 10, 106),
-                (troop_get_inventory_slot, ":item", ":my_troop", ":slot"),
-                (troop_get_inventory_slot_modifier, ":imod", ":my_troop", ":slot"),
-                (store_sub, ":offset", ":slot", 10),
-                (store_add, ":snap_item", slot_coop_inv_snap_bag_item_begin, ":offset"),
-                (troop_set_slot, "trp_temp_troop", ":snap_item", ":item"),
-                (store_add, ":snap_mod", slot_coop_inv_snap_bag_mod_begin, ":offset"),
-                (troop_set_slot, "trp_temp_troop", ":snap_mod", ":imod"),
-            (try_end),
+            (assign, "$g_coop_inv_snap_ready", 0),
+            (multiplayer_send_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
+                multiplayer_event_multiplayer_campaign_request_inv_sync),
             (set_trigger_result, -1),
         (else_try),
             (eq, ":window_no", window_party),

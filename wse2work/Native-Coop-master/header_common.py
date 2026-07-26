@@ -182,7 +182,7 @@ multiplayer_event_multiplayer_campaign_server_event_battle_available         = 1
 multiplayer_event_multiplayer_campaign_server_event_first_join    = 11
 multiplayer_event_multiplayer_campaign_server_event_stat_updated  = 12
 multiplayer_event_multiplayer_campaign_server_event_char_data     = 13
-# 14 free (was return_to_campaign -- never sent or handled)
+multiplayer_event_multiplayer_campaign_server_event_char_sync_renown = 14
 multiplayer_event_multiplayer_campaign_server_event_equip_slot        = 15
 multiplayer_event_multiplayer_campaign_server_event_char_sync_attr   = 16
 multiplayer_event_multiplayer_campaign_server_event_char_sync_skill  = 17
@@ -232,7 +232,7 @@ multiplayer_event_multiplayer_campaign_request_char_sync = 7
 multiplayer_event_multiplayer_campaign_party_dismiss = 10
 multiplayer_event_multiplayer_campaign_party_upgrade = 11
 multiplayer_event_multiplayer_campaign_sync_pools    = 12
-# 13 free (was request_inv_sync -- inventory is pre-warmed on join)
+multiplayer_event_multiplayer_campaign_request_inv_sync    = 13  # re-added for B3: inventory-window open requests an authoritative baseline re-push
 multiplayer_event_multiplayer_campaign_inv_change           = 14
 multiplayer_event_multiplayer_campaign_inv_sync_back_done   = 15
 # Center/trade/recruit client events (18-23)

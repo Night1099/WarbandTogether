@@ -1,9 +1,10 @@
 # Flow: Inventory Sync (equip pushes, bag sync, screen close-diff)
 
 **Status:** AUDITED
-**Validated against commit:** `d05ef59` (audit row 6 fix + join-push
-ordering runtime-verified 2026-07-10; group-C fixes for rows 4/5 smoke
-passed 2026-07-11)
+**Validated against commit:** `9558722` (B2 push-on-mutation + B3
+receive-handler baseline runtime smoke passed 2026-07-25, incl. the
+smoke-session trade-purchase fix `6c4db5c`; prior: row 6 fix + join-push
+ordering 2026-07-10, group-C rows 4/5 2026-07-11)
 
 ## Scope
 
@@ -31,11 +32,13 @@ sequenceDiagram
     CS->>C: ch125 25 inv_bag_slot: clear(-1) then non-empty slots
     CS->>C: ch125 26 inv_sync_done → $g_coop_inv_sync_ready=1
 
-    note over C: Native inventory opens (wse_window_opened):<br/>snapshot troop slots 0-105 into snap slots (open-time baseline)
-    note over C: player edits, window closes,<br/>0.5s poller resumes on campaign map
+    note over C: Native inventory opens (wse_window_opened)
+    C->>CS: ch49 13 request_inv_sync
+    CS->>C: full push (ev 15/25/26) — recv arms mirror the<br/>baseline into snap slots, ev 26 sets $g_coop_inv_snap_ready
+    note over C: player edits, window closes,<br/>0.5s poller resumes on campaign map (snap_ready-gated)
     C->>CS: ch49 14 inv_change per changed slot (slot,item,imod)
     C->>CS: ch49 15 inv_sync_back_done
-    CS->>CS: apply slots verbatim (no validation),<br/>coop_save_character → char dict
+    CS->>CS: count-validate batch vs pre-edit dict (INV GUARD),<br/>commit + coop_save_character, or revert + re-push
 
     note over CS,BS: Battle: gear travels via char dicts
     BS->>BS: spawn: coop_equip_player_agent from campaign gear,<br/>round transitions: coop_player_agent_save_items
@@ -63,10 +66,13 @@ sequenceDiagram
 ## State & events
 
 - **Events:** ch125: `equip_slot`=15, `inv_bag_slot`=25, `inv_sync_done`=26;
-  ch49: `request_inv_sync`=13 (**dead — no sender**, see audit row 5),
-  `inv_change`=14, `inv_sync_back_done`=15 (`header_common.py`).
+  ch49: `request_inv_sync`=13 (re-added deliberately by B3 `2f2f2bc` per
+  the C7 note — client sends on screen open, server replies with the full
+  push), `inv_change`=14, `inv_sync_back_done`=15 (`header_common.py`).
 - **Client globals:** `$g_coop_inv_screen_open` (0 idle / 1 open / 2 close
-  processed; set by `wse_window_opened`), `$g_coop_inv_sync_ready`.
+  processed; set by `wse_window_opened`), `$g_coop_inv_sync_ready`,
+  `$g_coop_inv_snap_ready` (baseline mirrored — close-diff may run; set by
+  ev 26, cleared when the diff fires or a trade close suppresses it).
 - **Snapshot slots** on `trp_temp_troop`: equip items 160–169, equip mods
   170–179, bag items 180–275, bag mods 276–371
   (`module_constants.py:1944–1947`).
@@ -99,8 +105,8 @@ sequenceDiagram
 
 | # | Behavior | Ours (anchor) | Native ground truth (evidence) | Verdict |
 |---|----------|---------------|--------------------------------|---------|
-| 1 | Server-side inventory mutations (quest rewards, script grants) are pushed to the client only on join/rejoin — there is no push-on-mutation path | pushes exist only at `:8221–8222` (join) | The mod's own documented authority model ("clients receive pushes") implies server mutations should reach a live client; in native SP the question doesn't arise (single process). A client's inventory screen can show stale state until rejoin. | DIVERGES |
-| 2 | Close-diff baseline is an **open-time snapshot of the client troop**, ungated | `module_scripts.py:51154–51188`; differ at `module_simple_triggers.py:4544–4600` has no ready-gate | The char-sync flow implements the documented lesson ("baseline must come from receive handlers, not client troop") with a `snap_ready` gate (`module_coop_scripts.py:6817–6821`); the inventory flow predates/skips it. A server push landing while the screen is open gets echoed back as a client edit (benign echo today only because pushes never occur mid-session — see row 1). | DIVERGES |
+| 1 | Server-side inventory mutations (quest rewards, script grants) are pushed to the client only on join/rejoin — there is no push-on-mutation path | pushes exist only at `:8221–8222` (join) | The mod's own documented authority model ("clients receive pushes") implies server mutations should reach a live client; in native SP the question doesn't arise (single process). | OK (fixed B2 `87f4c82`: `coop_push_player_inventory` = single push-on-mutation contract, unified join/creation/INV-GUARD call sites; trade purchases applied server-side + pushed at trade_done `6c4db5c`; runtime smoke 2026-07-25) |
+| 2 | Close-diff baseline is an **open-time snapshot of the client troop**, ungated | was `module_scripts.py` `wse_window_opened` snapshot loops, ungated poller diff | The char-sync flow implements the documented lesson ("baseline must come from receive handlers, not client troop") with a `snap_ready` gate; the inventory flow predated/skipped it. | OK (fixed B3 `75e9a57`: open sends ev 13, recv arms 15/25 mirror the baseline into the snap slots, ev 26 sets `$g_coop_inv_snap_ready`, poller diff gated char-sync-style; runtime smoke 2026-07-25) |
 | 3 | Battle equip: gear rebuilt from campaign state on spawn; consumables not decremented in campaign inventory after battle | `module_coop_scripts.py:3025–3044`, `:3002–3024` | Native refills ammo/consumables after battles (campaign inventory is not charge-tracked) — rebuilding from campaign state yields the same net behavior | OK |
 | 4 | Orphaned raw-slot 0–19 mirror deleted from the ev-15 recv arm (`1dc8fec`); the troop-struct writes that feed the native inventory screen remain. Smoke passed 2026-07-11 | ev-15 recv arm, `module_coop_scripts.py` | The actual diff baseline lives at slots 160–179 (`module_constants.py:1944–1945`), written by `wse_window_opened`/presentation — nothing read the raw-slot mirror | OK |
 | 5 | ch49 ev 13 `request_inv_sync` constant + handler deleted (`1dc8fec`) — no sender existed; inventory is pre-warmed on join. Project-state row corrected (ID 13 marked free). Smoke passed 2026-07-11 | `header_common.py` (ID 13 free note) | If B2 (push-on-mutation) ever needs a client re-request, add one deliberately in that design | OK |
@@ -110,8 +116,8 @@ sequenceDiagram
 
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
-| 1 | 1 | No push-on-mutation: add equip/bag pushes wherever server-side scripts mutate a player troop's inventory (or a periodic dirty-flag push), so live clients don't go stale until rejoin. | `module_coop_scripts.py` ECONOMY/MISC push helpers |
-| 2 | 2 | Move the inventory diff baseline to receive handlers + add a ready-gate, mirroring the char-sync pattern (removes the mid-session-push echo race and aligns with the documented lesson). | `module_scripts.py` `wse_window_opened` + `module_coop_scripts.py` recv arms |
+| 1 | 1 | ~~No push-on-mutation~~ **Done** (B2 `87f4c82` + trade-side `6c4db5c`, smoke 2026-07-25): `coop_push_player_inventory` contract — any server-side mutation ends with the push. | `module_coop_scripts.py` ECONOMY/MISC push helpers |
+| 2 | 2 | ~~Open-time snapshot baseline~~ **Done** (B3 `75e9a57`, smoke 2026-07-25): baseline mirrored in recv arms + `snap_ready` gate, char-sync pattern. | `module_scripts.py` `wse_window_opened` + `module_coop_scripts.py` recv arms |
 | 3 | 4 | ~~Orphaned raw-slot 0–19 mirror~~ **Done** (`1dc8fec`, smoke 2026-07-11): deleted; troop-struct writes kept. | `module_coop_scripts.py` ev-15 recv arm |
 | 4 | 5 | ~~Dead ev 13~~ **Done** (`1dc8fec`, smoke 2026-07-11): constant + handler removed, project-state row corrected. B2 re-adds a re-request only if its design needs one. | `header_common.py` + `module_coop_scripts.py` + workbench project-state doc |
 | 5 | 6 | ~~Validate `inv_change` server-side~~ **Done** (`50f4ac1`, runtime-verified 2026-07-10): batch count-validation against the pre-edit dict baseline in `coop_inv_sync_back_validate_and_save`, whole-batch revert + re-push on violation. | `module_coop_scripts.py` ev-14/15 arms |
@@ -125,6 +131,10 @@ already covered by `docs/RE_NATIVE_SCREENS.md`; no new engine RE required).
 
 - `xp-sync.md` — shared snapshot-slot machinery on `trp_temp_troop`.
 - Trade flow (ch49 20–22 / ch125 29–32): separate concern, no dossier yet.
+  Interaction since `6c4db5c`: the server applies bought/sold items itself
+  (`coop_ev_cli_trade_change` inverse) and `trade_done` ends with the full
+  inventory push; a trade close suppresses the client's local inventory
+  diff (trade-close poller block runs before the inventory-close block).
 
 Workbench documents (not part of the public export — see the citation
 note in `README.md`):

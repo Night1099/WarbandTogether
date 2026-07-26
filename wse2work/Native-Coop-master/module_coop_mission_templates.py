@@ -526,6 +526,7 @@ coop_mission_templates = [
          (assign, "$g_round_ended", 0),
          (assign, "$coop_winner_team", -1),
          (assign, "$coop_battle_started", 0),
+         (assign, "$coop_last_agent_event_time", 0),
 
         # (assign, reg1, "$coop_time_of_day"), 
         # (assign, reg2, "$coop_cloud"), 
@@ -870,6 +871,7 @@ coop_mission_templates = [
           #check this script for changes, currently only sets multiplayer_ready_for_spawning_agent
           # (call_script, "script_multiplayer_server_on_agent_spawn_common", ":agent_no"),
           (assign, "$g_multiplayer_ready_for_spawning_agent", 1),
+          (store_mission_timer_a, "$coop_last_agent_event_time"),
           (agent_set_slot, ":agent_no", slot_agent_coop_spawn_party, "$coop_agent_party"), #store party of agent
 
           (call_script, "script_coop_equip_player_agent", ":agent_no"), #ITEM BUG WORKAROUND
@@ -920,35 +922,21 @@ coop_mission_templates = [
           (try_end),
          (assign, "$coop_alive_team1", ":number_of_alive_1"),
          (assign, "$coop_alive_team2", ":number_of_alive_2"),
-
-        (try_begin), #check round end        
-          (this_or_next|eq, ":number_of_alive_1", 0),
-          (eq, ":number_of_alive_2", 0),
-          (try_begin), #assign my initial team value (only used to set color of multiplayer_message_type_round_result_in_battle_mode)
-            (multiplayer_get_my_player, ":my_player_no"),
-            (ge, ":my_player_no", 0),
-            (player_get_team_no, "$coop_my_team", ":my_player_no"),
-            (player_get_team_no, "$my_team_at_start_of_round", ":my_player_no"),
-            (player_get_agent_id, ":my_agent_id", ":my_player_no"),
-            (ge, ":my_agent_id", 0),
-            (agent_get_troop_id, "$coop_my_troop_no", ":my_agent_id"),
-          (try_end),     
-
-          (try_begin),
-            (eq, "$coop_alive_team1", 0),#if team 1 is dead
-            (assign, "$coop_winner_team", 1),
-          (else_try),
-            (eq, "$coop_alive_team2", 0),#if team 2 is dead
-            (assign, "$coop_winner_team", 0),
-          (try_end),
-
-          (call_script, "script_show_multiplayer_message", multiplayer_message_type_round_result_in_battle_mode, "$coop_winner_team"), #team 2 is winner 
-          (store_mission_timer_a, "$g_round_finish_time"),
-          (assign, "$g_round_ended", 1),
-        (try_end),
+         (store_mission_timer_a, "$coop_last_agent_event_time"),
 
 
          ]),
+
+      # A9: native-style victory condition -- reserve-aware + settle delay.
+      # Runs on all machines (clients display the result; the server's
+      # $g_round_ended drives the save/kick handler below).
+      (1, 0, 0,
+       [(eq, "$coop_battle_started", 1),
+        (eq, "$g_round_ended", 0),
+        ],
+       [
+        (call_script, "script_coop_battle_check_round_end"),
+       ]),
 
       # Dedicated battle server end-of-round handler:
       # 1) save battle results (writes @coop_battle dict and signals DLL via
@@ -4636,6 +4624,7 @@ coop_mission_templates = [
          (assign, "$g_round_ended", 0),
          (assign, "$coop_winner_team", -1),
          (assign, "$coop_battle_started", 0),
+         (assign, "$coop_last_agent_event_time", 0),
          (assign, "$coop_use_belfry", 0),
          (assign, "$coop_attacker_is_on_wall", 0),
 
@@ -5053,6 +5042,7 @@ coop_mission_templates = [
            #check this script for changes, currently only sets g_multiplayer_ready_for_spawning_agent
           # (call_script, "script_multiplayer_server_on_agent_spawn_common", ":agent_no"),
           (assign, "$g_multiplayer_ready_for_spawning_agent", 1),
+          (store_mission_timer_a, "$coop_last_agent_event_time"),
           (agent_set_slot, ":agent_no", slot_agent_coop_spawn_party, "$coop_agent_party"), #store party of agent
           (call_script, "script_coop_equip_player_agent", ":agent_no"), #ITEM BUG WORKAROUND
         (try_end),
@@ -5108,43 +5098,9 @@ coop_mission_templates = [
           (try_end),
          (assign, "$coop_alive_team1", ":number_of_alive_1"),
          (assign, "$coop_alive_team2", ":number_of_alive_2"),
-
-        (try_begin), #check round end        
-          (this_or_next|eq, ":number_of_alive_1", 0),
-          (eq, ":number_of_alive_2", 0),
-          (try_begin), #assign my initial team value (only used to set color of multiplayer_message_type_round_result_in_battle_mode)
-            (multiplayer_get_my_player, ":my_player_no"),
-            (ge, ":my_player_no", 0),
-            (player_get_team_no, "$coop_my_team", ":my_player_no"),
-            (player_get_team_no, "$my_team_at_start_of_round", ":my_player_no"),
-            (player_get_agent_id, ":my_agent_id", ":my_player_no"),
-            (ge, ":my_agent_id", 0),
-            (agent_get_troop_id, "$coop_my_troop_no", ":my_agent_id"),
-          (try_end),     
-
-          (try_begin),
-            (eq, "$coop_alive_team1", 0),#if team 1 is dead
-            (assign, "$coop_winner_team", 1),
-            (try_begin),
-              (ge, "$coop_num_bots_team_1", coop_reserves_hall), #if loser has reserves, they retreated
-              (display_message, "@The defenders retreat!"),
-            (try_end),
-          (else_try),
-            (eq, "$coop_alive_team2", 0),#if team 2 is dead
-            (assign, "$coop_winner_team", 0),
-            (try_begin),
-              (ge, "$coop_num_bots_team_2", coop_reserves_hall), #if loser has reserves, they retreated
-              (display_message, "@The defenders retreat!"),
-            (try_end),
-          (try_end),
-
-          (call_script, "script_show_multiplayer_message", multiplayer_message_type_round_result_in_battle_mode, "$coop_winner_team"), #team 2 is winner 
-          (store_mission_timer_a, "$g_round_finish_time"),
-          (assign, "$g_round_ended", 1),
-        (try_end),
-#END BATTLE ##################	
+         (store_mission_timer_a, "$coop_last_agent_event_time"),
+#END BATTLE ##################
         ]),
-
 
 
 
@@ -5234,6 +5190,19 @@ coop_mission_templates = [
         ]),
 
 
+      # A9: native-style victory condition -- reserve-aware + settle delay.
+      # Runs on all machines (clients display the result; the server's
+      # $g_round_ended drives the save/kick handlers below). On a listen
+      # siege, defenders holding street/hall reserves keep effective
+      # strength > 0, so mid-siege scene transitions no longer flash a
+      # spurious round result.
+      (1, 0, 0,
+       [(eq, "$coop_battle_started", 1),
+        (eq, "$g_round_ended", 0),
+        ],
+       [
+        (call_script, "script_coop_battle_check_round_end"),
+       ]),
 
 #delay after battle to quit
       # Listen-server path: save + finish mission after round end.

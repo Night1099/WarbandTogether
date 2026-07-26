@@ -2070,6 +2070,8 @@ coop_event_return_disable_inventory               = 48
 coop_event_return_reduce_damage                   = 49
 coop_event_return_no_capture_heroes               = 50
 coop_event_return_team_troop_num                  = 51
+coop_event_battle_retreat                         = 52
+coop_event_return_is_initiator                    = 53
 
 # Coop player slot -- which troop the player has selected for the battle
 # Slots 40-48 are used by invasion mode (ccoop); 49 is free

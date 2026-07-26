@@ -1,7 +1,9 @@
 # Flow: Party Screen Sync (roster, dismiss, upgrade)
 
 **Status:** AUDITED
-**Validated against commit:** `a68b8ae`
+**Validated against commit:** `9558722` (A4 residual — server-side
+upgrade-credit consumption — fixed in the B2B3 merge, runtime smoke
+2026-07-25; prior stamp `a68b8ae`)
 
 ## Scope
 
@@ -40,7 +42,7 @@ sequenceDiagram
 | 4 | Close-diff pass 3: leftover decreases -> dismissals | `module_simple_triggers.py` | 4515–4525 | sends ch49 ev 10 |
 | 5 | Server dismiss arm (validated) | `module_coop_scripts.py` | 8715–8729 | bounds 1–100, non-hero, have-count, save |
 | 6 | Server upgrade arm (validated) | `module_coop_scripts.py` | 8730–8757 | upgrade-tree check, bounds, have-count, save |
-| 7 | Upgradeable counts push | `module_coop_scripts.py` | 9678–9693 | `coop_send_party_xp_to_client` (ch125 ev 22, see `xp-sync.md`) |
+| 7 | Upgradeable counts push | `module_coop_scripts.py` | 9678–9693 | `coop_send_party_upgradeable_to_client` (ch125 ev 22, see `xp-sync.md`) |
 | 8 | Char dict party codec (troop, size, wounded) | `module_coop_scripts.py` | 7210–7230 | in `coop_save_character` (`:7217` wounded) |
 | 9 | Battle-server temp-party sort (round transitions only) | `module_coop_scripts.py` | 3987–4020 | `coop_sort_party` (callers `module_coop_mission_templates.py:5214,5219`) |
 
@@ -48,8 +50,8 @@ sequenceDiagram
 
 - **Events:** ch49: `party_sync_begin`=8, `party_sync_stack`=9 (**both dead —
   no senders, no handlers**, see audit row 4), `party_dismiss`=10,
-  `party_upgrade`=11; ch125: `party_stack_xp`=22 (upgradeable counts)
-  (`header_common.py:227–230`).
+  `party_upgrade`=11; ch125: `party_stack_num_upgradeable`=22 (upgradeable
+  counts; renamed from `party_stack_xp` in the C5 fix) (`header_common.py`).
 - **Client globals/slots:** `$g_coop_party_screen_open` (0/1/2 lifecycle),
   party snapshot at `slot_coop_party_snap_begin` + 3-slot stride
   (troop, size, decrease-delta) on `trp_temp_troop`.
@@ -77,7 +79,7 @@ sequenceDiagram
 | # | Behavior | Ours (anchor) | Native ground truth (evidence) | Verdict |
 |---|----------|---------------|--------------------------------|---------|
 | 1 | Upgrade structure: tree-validated (both branches), count-bounded, non-hero, have-count-checked on the server | `module_coop_scripts.py:8730–8757` | Same legality rules the native party screen enforces (`troop_get_upgrade_troop` is the same source of truth) | OK |
-| 2 | Upgrade **cost**: server charges the native gold cost (`game_get_upgrade_cost` × count) before applying and rejects unaffordable requests, so the server gold push no longer refunds the client's local charge. Fixed in `50f4ac1`, runtime-verified 2026-07-10. Residual nuance: stack upgrade XP (`num_upgradeable`) is still not decremented server-side — the native screen enforces it client-side, but a modified client could upgrade without upgrade XP (gold is still charged) | `module_coop_scripts.py:8865–8875` (@ `fc1f204`) | Native upgrades consume stack upgrade XP and charge gold in the engine party screen. Coop now matches on gold; upgrade-XP consumption remains client-enforced only. | OK |
+| 2 | Upgrade **cost**: server charges the native gold cost (`game_get_upgrade_cost` × count) before applying and rejects unaffordable requests, so the server gold push no longer refunds the client's local charge. Fixed in `50f4ac1`, runtime-verified 2026-07-10. Residual fixed in the A4 fold-in (`bdcfd8c`, merged `9558722`, runtime smoke 2026-07-25): the ev-11 arm now consumes the from-stack's `num_upgradeable` credits server-side via op 3906 and re-pushes ev 22 — engine RE proved stacks have no XP field, credits are the only currency | `module_coop_scripts.py:8865–8875` (@ `fc1f204`); ev-11 arm (@ `bdcfd8c`) | Native upgrades consume stack upgrade XP and charge gold in the engine party screen. Coop now matches on both. | OK |
 | 3 | Dismiss: non-hero, bounded, have-count-checked; no other consequences | `:8715–8729` | Native party-screen dismissal likewise has no gold/morale consequence for regulars; heroes can't be dismissed this way in native either | OK |
 | 4 | ch49 ev 8/9 `party_sync_begin`/`party_sync_stack` constants deleted (`1dc8fec`) — they had no sender and no handler; project-state row corrected (IDs 8-9 marked free). Smoke passed 2026-07-11 | `header_common.py` (ID 8-9 free note) | Roster syncs via the engine's native MP replication (the C-layer snapshot/delta stream was retired in B8) | OK |
 | 5 | Roster injection: client cannot add stacks via the diff (drop rule, invariant 1); raw ev-11 forgeries are limited to legal upgrade edges by server validation | `module_simple_triggers.py:4469–4513`; `module_coop_scripts.py:8730–8757` | Matches the server-authoritative design intent — except the free-cost hole in row 2 | OK |
@@ -88,7 +90,7 @@ sequenceDiagram
 
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
-| 1 | 2 | ~~Upgrades are free~~ Gold cost fixed (`50f4ac1`) + runtime-verified 2026-07-10. Remaining (minor, authority-hardening): decrement stack upgrade XP server-side so a modified client can't upgrade without it. | `module_coop_scripts.py:8865–8875` ev-11 arm |
+| 1 | 2 | ~~Upgrades are free~~ **Done**: gold cost fixed (`50f4ac1`, runtime-verified 2026-07-10); server-side upgrade-credit consumption fixed in the A4 fold-in (`bdcfd8c`, merged `9558722`, runtime smoke 2026-07-25 — reopening the party screen reflects consumed credits via the ev-22 re-push). | `module_coop_scripts.py` ev-11 arm |
 | 2 | 4 | ~~Dead ev 8/9~~ **Done** (`1dc8fec`, smoke 2026-07-11): constants removed, project-state table corrected. | `header_common.py` + workbench project-state doc |
 
 ## Open questions

@@ -22,7 +22,25 @@ cd wse2work\Native-Coop-master
 build_module.bat
 ```
 
-`build_module.bat` expects `python` on PATH to be Python 2.7. From bash, or with multiple Pythons installed, run each step explicitly:
+One-liner that works around both quirks below (from any shell, via cmd):
+
+```cmd
+cmd /c "cd /d <repo>\wse2work\Native-Coop-master && set PATH=C:\Python27;%PATH% && .\build_module.bat <nul"
+```
+
+Environment quirks:
+
+- **Bare `build_module.bat` may fail with "not recognized"** even from the
+  correct directory — hardened Windows setups exclude the current
+  directory from cmd's executable search
+  (`NoDefaultCurrentDirectoryInExe`). Invoke it as `.\build_module.bat`.
+- **`python` on PATH must be Python 2.7** — with Python 3 first, every
+  step dies with `SyntaxError: Missing parentheses in call to 'print'`.
+  Prepend `C:\Python27` to PATH for the invocation (as above).
+- The bat ends with `pause` — the `<nul` redirect keeps it from blocking
+  in non-interactive shells.
+
+Alternatively, run each step explicitly with the 2.7 interpreter:
 
 ```bash
 cd wse2work/Native-Coop-master

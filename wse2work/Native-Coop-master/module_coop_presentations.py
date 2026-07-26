@@ -1913,6 +1913,7 @@ coop_presentations = [
       (assign, "$g_presentation_obj_escape_menu_15", -1),
       (assign, "$g_presentation_obj_escape_menu_16", -1),
       (assign, "$g_presentation_obj_escape_menu_17", -1),
+      (assign, "$g_presentation_obj_escape_menu_18", -1),
 
       (create_mesh_overlay, reg0, "mesh_mp_ingame_menu"),
       (position_set_x, pos1, 250),
@@ -2053,6 +2054,13 @@ coop_presentations = [
         (overlay_set_color, "$g_presentation_obj_escape_menu_17", 0xFFFFFF),
       (try_end),
 
+      (try_begin),
+        (eq, "$coop_battle_started", 1),
+        (eq, "$g_coop_battle_is_initiator", 1),
+        (create_button_overlay, "$g_presentation_obj_escape_menu_18", "@Retreat from Battle", 0),
+        (overlay_set_color, "$g_presentation_obj_escape_menu_18", 0xFFFFFF),
+      (try_end),
+
 ###
 
       (position_set_x, pos1, 130),
@@ -2140,6 +2148,13 @@ coop_presentations = [
         (val_sub, ":cur_y", escape_menu_item_height),
         (position_set_y, pos1, ":cur_y"),
         (overlay_set_position, "$g_presentation_obj_escape_menu_17", pos1),
+      (try_end),
+
+      (try_begin),
+        (ge, "$g_presentation_obj_escape_menu_18", 0),
+        (val_sub, ":cur_y", escape_menu_item_height),
+        (position_set_y, pos1, ":cur_y"),
+        (overlay_set_position, "$g_presentation_obj_escape_menu_18", pos1),
       (try_end),
 
       (val_sub, ":cur_y", escape_menu_item_height),
@@ -2244,6 +2259,11 @@ coop_presentations = [
         (assign, "$coop_battle_started", -1),
         (presentation_set_duration, 0),
         (start_presentation, "prsnt_coop_escape_menu"),
+
+      (else_try),
+        (eq, ":object", "$g_presentation_obj_escape_menu_18"),
+        (multiplayer_send_int_to_server, multiplayer_event_coop_send_to_server, coop_event_battle_retreat),
+        (presentation_set_duration, 0),
       (try_end),
 
       ]),

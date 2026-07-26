@@ -1,7 +1,7 @@
 # Flow: Siege (coop siege battle types + local siege)
 
 **Status:** AUDITED
-**Validated against commit:** `d05ef59`
+**Validated against commit:** `0b2500a`
 
 ## Scope
 
@@ -10,7 +10,8 @@ server runs the `coop_siege` mission) and the **local siege** (initiating
 client fights an SP-style wall assault against AI, then reports the result).
 Entry points: the coop center menu options `coop_center_assault` /
 `coop_center_assault_local`. Exit state: garrison casualties applied (both
-paths); center ownership transferred on local-siege win only (see audit).
+paths); on a win, both paths run the A7 victory applier plus the shared
+capture-consequences script (`coop_siege_capture_consequences`).
 The shared serialization/IPC/result tail is documented in
 `battle-pipeline.md` — this dossier covers only the siege delta.
 
@@ -33,7 +34,7 @@ sequenceDiagram
     CS->>C: ch125 battle_available (10) to other players
     BS->>BS: coop_siege mission: belfry/ladder setup,<br/>rounds (walls → street → hall) on listen,<br/>dedicated forced single-round
     BS->>CS: dict + $coop_battle_started=-1 → IPC END<br/>(shared tail, see battle-pipeline.md)
-    CS->>CS: apply_battle_results: garrison casualties only --<br/>NO center capture
+    CS->>CS: apply_battle_results: garrison casualties,<br/>A7 applier (win), then coop_siege_capture_consequences:<br/>capture + prosperity/war damage/renown +5
     end
 
     rect rgb(235,245,235)
@@ -43,7 +44,7 @@ sequenceDiagram
     CS->>C: ch125 start_siege_local (42): wall_scene, with_belfry
     C->>C: coop_client_start_siege_local:<br/>mt_coop_castle_attack_walls_{belfry|ladder},<br/>debrief menu, $g_coop_asi_local_battle=1
     C->>CS: ch49 local_fight_result (17): win/loss, casualties, xp delta
-    CS->>CS: win: party_clear center +<br/>give_center_to_faction_aux → player faction
+    CS->>CS: win: A7 applier (gold/renown/prisoners/political),<br/>then coop_siege_capture_consequences
     end
 ```
 
@@ -67,8 +68,9 @@ sequenceDiagram
 | 14 | — belfry placement block | `module_coop_mission_templates.py` | 5391–5423 | `script_coop_move_belfries_to_their_first_entry_point` (def `module_coop_scripts.py:3187`) |
 | 15 | — belfry crew assignment | `module_coop_mission_templates.py` | 5469 | `script_cf_coop_siege_assign_men_to_belfry` |
 | 16 | Round-type / reserve constants | `module_constants.py` | 2101–2112 | `coop_reserves_hall/street`, `coop_round_*` |
-| 17 | Local siege aftermath (event 17 arm) | `module_coop_scripts.py` | 9088–9110 | `coop_char_siege_center_get` + clear, capture on win: `party_clear` + `give_center_to_faction_aux` |
-| 18 | Dedicated siege result apply (shared) | `module_coop_scripts.py` | 9274 | `coop_apply_battle_results` — garrison casualties via `@p_enemy0_partyid` = center party; **no capture logic** |
+| 17 | Local siege aftermath (event 17 arm) | `module_coop_scripts.py` | 9866–9889 | `coop_char_siege_center_get` + clear; win: `coop_victory_consequences_local` then `coop_siege_capture_consequences` + renown +5 |
+| 18 | Dedicated siege result apply (shared) | `module_coop_scripts.py` | 11292–11325 | `coop_apply_battle_results` — garrison casualties via `@p_enemy0_partyid` = center party; win: A7 applier first, then `coop_siege_capture_consequences` (captor = initiator via `@battle_host_player_name`, applier fallback) |
+| 19 | Shared capture consequences | `module_coop_scripts.py` | 9786–9823 | `coop_siege_capture_consequences`: `party_clear`, `slot_center_last_taken_by_troop`, prosperity −5, war damage 40/20 vs old faction, full `give_center_to_faction` to `fac_player_faction` |
 
 ## State & events
 
@@ -124,20 +126,20 @@ sequenceDiagram
 |---|----------|---------------|--------------------------------|---------|
 | 1 | Siege scene + variant: walls scene from `slot_town_walls`/`slot_castle_exterior`, belfry vs ladder from `slot_center_siege_with_belfry` | `module_coop_scripts.py:9086–9094`, `:8642–8651` | Identical sources to native: assault menus read `slot_town_walls`/`slot_castle_exterior` (`module_game_menus.py:5455–5457`, `:5815–5820`) and the belfry flag is the same slot native seeds at game start (`module_scripts.py:346–360`). Local-siege missions are literal copies of native `castle_attack_walls_{belfry,ladder}` with only a side-flag swap (`module_mission_templates.py:3222–3232`, `:3302–3309`). | OK |
 | 2 | Belfry (dedicated `coop_siege`): pre-positioned at first entry point with `slot_scene_prop_belfry_platform_moved=1`; no push/rotate phase | `module_coop_mission_templates.py:5391–5423` (native trigger commented out at `:5391`), `:5469`; `module_coop_scripts.py:3187` | Native uses `common_siege_init_ai_and_belfry`/`_move_belfry`/`_rotate_belfry`/`_assign_men_to_belfry` (`module_mission_templates.py:981–1002`) — soldiers push the belfry to the wall. Coop deliberately replaces this (native triggers commented out, replacement block inline): belfries start at the wall, movement phase skipped. Intentional MP simplification. | OK |
-| 3 | Defender composition: center party as enemy0 (garrison keys point there) plus every party attached to the center serialized as enemy1..N with per-party casualty round-trip via `@p_enemy{i}_partyid`; friendly AI parties within `coop_siege_join_radius` join as ally1..N (placeholder rule until a siege camp exists) | `coop_write_battle_data` roster sections + `script_coop_battle_dict_write_roster_party` | Native battles collect **attached parties** into the enemy side (`party_collect_attachments_to_party` -> `p_collective_enemy`, `module_game_menus.py:6045`, `:4247`). Coop now rosters them per-party (identity preserved for casualty apply-back — a collective party can't round-trip through the dict). Fixed `67239e5..d7955b7`, runtime-verified 2026-07-19 multi-client. Known follow-up: the attacker-side proximity filter is faction-relation-only and admits farmer/villager parties of unrelated at-war factions (tracked as an open follow-up) | OK |
+| 3 | Defender composition: center party as enemy0 (garrison keys point there) plus every party attached to the center serialized as enemy1..N with per-party casualty round-trip via `@p_enemy{i}_partyid`; friendly AI parties within `coop_siege_join_radius` join as ally1..N (placeholder rule until a siege camp exists) | `coop_write_battle_data` roster sections + `script_coop_battle_dict_write_roster_party` | Native battles collect **attached parties** into the enemy side (`party_collect_attachments_to_party` -> `p_collective_enemy`, `module_game_menus.py:6045`, `:4247`). Coop now rosters them per-party (identity preserved for casualty apply-back — a collective party can't round-trip through the dict). Fixed `67239e5..d7955b7`, runtime-verified 2026-07-19 multi-client. Attacker-side filter tightened in A8 (`2845589`, verified 2026-07-25): lord-party whitelist + real-ally relation rule | OK |
 | 4 | Multi-round siege (walls -> street -> hall) in listen mode; dedicated forced single-round | `module_coop_mission_templates.py:5150–5232`, `:5153–5157` | Dedicated single-round is documented in-code: "Dedicated siege v1 is single-round: the wall battle decides the siege" (`:5153–5155`). The multi-phase progression is inherited coop-mod (Banner Time) design, a deliberate extension over native's single-scene assault. | OK |
-| 5 | Dedicated siege victory: garrison casualties applied, **center never changes hands** — no capture, no besieged-state cleanup | `module_coop_scripts.py:9274–9479` (no `give_center_*` call); only local siege captures (`:8980–8987`) | Native: successful assault transfers the center, handles lord capture/escape, prisoners, and post-siege menus | DIVERGES |
-| 6 | Local siege victory: `party_clear` garrison + `give_center_to_faction_aux` to player faction — no other consequences. Capture itself runtime-verified 2026-07-10 (`[LOCAL SIEGE] center=310 win=1` → Ismirala Castle captured) after `13ebcad` re-keyed the target to `@char_siege_center` (the old party-slot mark stored a player_no that dies with the rejoin — capture never fired) | `module_coop_scripts.py:9088–9110` | Native `castle_taken` menu (`module_game_menus.py:6569–6640`): `party_clear` (matches), then `lift_siege`, `slot_center_last_taken_by_troop`, prosperity −5, renown +5, `faction_inflict_war_damage_on_faction` (20/40), full `give_center_to_faction` (lord/political handling, vs coop's low-level `_aux`), besieger guard order, keep-or-give-to-vassal menu. Coop skips all of these. | DIVERGES |
+| 5 | Dedicated siege victory: capture fixed in `50f4ac1` (A5, runtime-verified 2026-07-10); A8 (`0b2500a`, runtime-verified 2026-07-25) moved it into the shared capture script and reordered it AFTER the A7 applier — political consequences now read the center's pre-transfer faction (latent A7-era ordering bug fixed) | `module_coop_scripts.py:11292–11325` | Native: successful assault transfers the center, handles lord capture/escape, prisoners, and post-siege menus — A7 applier + A8 capture script now cover the set | OK |
+| 6 | Both capture paths run native `castle_taken` consequences via `coop_siege_capture_consequences`: `party_clear`, `slot_center_last_taken_by_troop` (initiator), prosperity −5, renown +5 to every participant, war damage 40/20 vs the old owner, full `give_center_to_faction`; local siege additionally gained the previously-missing A7 applier call (gold/battle renown/garrison prisoners/lord fate/political). Fixed A8 (`8b45f2a..db4a815`, merged `0b2500a`), runtime-verified 2026-07-25 (Bulugha Castle smoke: gold+renown+capture; prisoners confirmed once prisoner_management > 0 — native cap) | `module_coop_scripts.py:9786–9823`, `:9866–9889` | Native `castle_taken` menu (`module_game_menus.py:6569–6640`). Deliberately dropped as N/A in coop: `lift_siege` (no siege-camp state), besieger guard order (no besieger AI), keep-or-give-to-vassal menu (players are not vassals; centers go to `fac_player_faction`). Known cosmetic: local path prints both "has fallen" and "has captured" | OK |
 | 7 | Battle types `siege_player_defend` (3), `village_*` (4/5), `bandit_lair` (6) are defined and handled by the dict loader, but nothing ever launches them | `module_constants.py:1996–1999`; only callers pass types 1/2 (`module_coop_scripts.py:8578`, `:8617`) | Confirmed by exhaustive grep: no `coop_write_battle_data` caller uses types 3–6. Group-C resolution (`1dc8fec`): kept as future-feature scaffolding, documented as "defined, not yet launched" here and in project-state — the divergence was the docs overstating them, now corrected | OK |
 
 ## Fix list
 
 | # | From audit row | What diverges | Suggested owner/layer |
 |---|----------------|---------------|------------------------|
-| 1 | 5 | Winning a dedicated siege does not capture the center: apply the same ownership transfer (and besieged-state cleanup) the local path does, driven from the battle result in `coop_apply_battle_results` (center party id is already in `@map_party_id`). | `module_coop_scripts.py` BATTLE PIPELINE section |
-| 2 | 6 | Local-siege capture skips native consequences (lord fate, prisoners, relations). Decide the minimal native-parity set and port it; share it with the dedicated-path fix. | `module_coop_scripts.py` |
+| 1 | 5 | ~~Winning a dedicated siege does not capture the center~~ **Done**: capture in `50f4ac1` (A5); A8 (`0b2500a`) moved it into `coop_siege_capture_consequences`, ordered after the A7 applier. | `module_coop_scripts.py` BATTLE PIPELINE section |
+| 2 | 6 | ~~Local-siege capture skips native consequences~~ **Done** (A8, `8b45f2a..db4a815`, merged `0b2500a`, runtime-verified 2026-07-25): shared capture script + A7 applier call on the local path. Residual (DEFERRED.md): local sieges never roster defender attachments; garrison stacks leak through the ev-17 `-2` path. | `module_coop_scripts.py` |
 | 3 | 7 | ~~Dead battle types 3–6~~ **Done** (`1dc8fec`): kept as future-feature scaffolding, documented as "defined, not yet launched" (code untouched). Wire launch paths when the features are built. | `module_constants.py` + `module_coop_scripts.py` |
-| 4 | 3 | ~~Attached defender parties excluded from the battle roster~~ **Done** (`67239e5..d7955b7`, runtime-verified 2026-07-19): attachments serialized as enemy1..N, proximity AI allies as ally1..N, casualties routed per party, markers on all rostered parties + startup sweep. Open refinement: tighten the attacker selection filter (farmer/random-faction parties currently pass — tracked as an open follow-up). | `module_coop_scripts.py` `coop_write_battle_data` |
+| 4 | 3 | ~~Attached defender parties excluded from the battle roster~~ **Done** (`67239e5..d7955b7`, runtime-verified 2026-07-19): attachments serialized as enemy1..N, proximity AI allies as ally1..N, casualties routed per party, markers on all rostered parties + startup sweep. Attacker-filter refinement **done** (A8 `2845589`, runtime-verified 2026-07-25): `spt_kingdom_hero_party` whitelist + same-faction-or-relation>0 rule; farmer/third-faction parties excluded, allied lords still join. | `module_coop_scripts.py` `coop_write_battle_data` |
 
 ## Open questions
 
