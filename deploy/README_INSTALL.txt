@@ -15,7 +15,7 @@ https://github.com/Night1099/WarbandTogether/blob/main/docs/INSTALL.md
 
    This will place files as follows:
    - CoopWSEPlugin.dll, winmm.dll, winmm_sys.dll, dinput8.dll,
-     coop_loader.dll, warband_coop.asi, char_screen_hooks.asi
+     warband_coop.asi
      -> game root directory
    - coop.ini -> game root directory
    - Configs\*.txt, *.ini -> game root Configs\ directory

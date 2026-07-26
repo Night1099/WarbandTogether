@@ -108,8 +108,6 @@ call :copy_pref bin\winmm.dll          || goto :error
 call :copy_pref bin\warband_coop.asi   || goto :error
 call :copy_pref winmm_sys.dll      || goto :error
 call :copy_pref dinput8.dll        || goto :error
-call :copy_pref coop_loader.dll    || goto :error
-call :copy_pref char_screen_hooks.asi || goto :error
 
 REM ---- WSE2 engine (pinned rev 1145 + on-disk coop patches) -------------
 REM The client must run a byte-identical engine: warband_coop.asi hooks
