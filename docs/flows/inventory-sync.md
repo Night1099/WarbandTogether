@@ -1,9 +1,13 @@
 # Flow: Inventory Sync (equip pushes, bag sync, screen close-diff)
 
 **Status:** AUDITED
-**Validated against commit:** `9558722` (B2 push-on-mutation + B3
+**Validated against commit:** `9681486` (net-optimizations: the join-time
+char sync this dossier's sequence diagram references is now 5 packed
+messages, ch125 ev 36-40, not the old per-value events 16-24 — see
+`xp-sync.md` for the char-sync detail; this flow's own events (15/25/26,
+ch49 13/14/15) are unaffected. Prior: `9558722`, B2 push-on-mutation + B3
 receive-handler baseline runtime smoke passed 2026-07-25, incl. the
-smoke-session trade-purchase fix `6c4db5c`; prior: row 6 fix + join-push
+smoke-session trade-purchase fix `6c4db5c`; row 6 fix + join-push
 ordering 2026-07-10, group-C rows 4/5 2026-07-11)
 
 ## Scope
@@ -27,7 +31,7 @@ sequenceDiagram
     participant BS as Battle Server
 
     note over CS,C: Join: pre-warm push (char sync FIRST — see invariants)
-    CS->>C: ch125 16-24 char_sync (attrs/skills/profs/...)
+    CS->>C: ch125 36-40 packed char_sync (attrs/skills/profs/points/xp/health/gold/renown -- see xp-sync.md)
     CS->>C: ch125 15 equip_slot x10 (slot,item,imod)
     CS->>C: ch125 25 inv_bag_slot: clear(-1) then non-empty slots
     CS->>C: ch125 26 inv_sync_done → $g_coop_inv_sync_ready=1

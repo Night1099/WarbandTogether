@@ -14,5 +14,6 @@ set_team_point_limit 10
 set_steam_port 7267
 set_port 7247
 set_upload_limit 100000000
+set_add_to_game_servers_list 0
 set_server_log_folder Logs
 start

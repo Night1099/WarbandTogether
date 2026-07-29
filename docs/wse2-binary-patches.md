@@ -32,25 +32,22 @@ data[0x21DCB9] = 0xEB  # jne → jmp
 
 The server rate-limits per-player packet sends with an adaptive period clamped between 33ms (30Hz) and 100ms (10Hz). Campaign party positions update at this rate. Lowering the minimum period makes movement feel snappier.
 
+**Status: Never applied on rev 1145** (stale pre-1145 entry — see
+`docs/TRAFFIC_OPTIMIZATION.md` F2). Superseded by the runtime
+`[NetTuning] SendRateHz` knob in CoopWSEPlugin (`nettune.c`).
+
+The `0x883B58 = Applied` VA below was never real for this binary — that
+address holds ASCII text with zero code references, not the send-period
+constant. The actual read/write sites (RE'd in the A9 session, see
+`patches/WarbandDedicated/findings.md` "nettune patch sites"):
+
 | Field | Value |
 |-------|-------|
 | Function | `computePacketValues` (0x4A70C0) |
-| Constant VA | 0x883B58 |
-| File offset | 0x2A0AA6 |
-| Type | float (4 bytes, little-endian IEEE 754) |
+| Constant VA | 0x887BC0 (`.rdata` float, sole reader `movss xmm1,[0x887BC0]` @ 0x4A712D) |
+| File offset | 0x4867C0 |
 | Original | `0.033333` (30 Hz max send rate) |
-| Patched | `0.016` (62.5 Hz) |
-| Backup | `.bak_30hz` |
-| Effect | Doubles max party position update rate to clients |
-| Status | **Applied** |
-
-**How to apply:**
-```python
-import struct
-struct.pack_into('<f', data, file_offset, 0.016)  # 62.5 Hz
-```
-
-**File offset calculation:** VA 0x883B58, preferred base 0x400000, RVA 0x483B58. Convert via PE section table.
+| Secondary default | `rglConfig::Network` defaults ctor writes the same 0.033333 as an immediate at VA 0x6A16A3 (file offset 0x2A0AA6) — both sites must agree for a static binary patch to hold |
 
 **Related server_config.ini settings:**
 ```ini
@@ -79,7 +76,7 @@ Network thread (0x489280) — receive only:
 **Per-player adaptive rate:**
 - `m_packetSendPeriod` at player struct +0x2F0
 - Computed from upload bandwidth (3,000–100,000 bytes/sec per player)
-- Clamped: min = `*(float*)0x883B58` (patched), max = 0.1s (10Hz)
+- Clamped: min = `*(float*)0x887BC0` (unpatched, 0.033333), max = 0.1s (10Hz)
 
 **Party position replication:**
 - Dirty flag system: positions checked against last-sent values each frame

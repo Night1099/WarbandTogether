@@ -207,14 +207,15 @@ extern const addr_table *g_addrs;          /* pinned once at init */
 #define NETMGR_OFF_ANTICHEAT     0xFFFF  /* REMOVED -- sentinel value, writes will fault intentionally */
 #define NETMGR_OFF_INITIALIZED   0x58    /* bool: m_winsockStarted (same offset as vanilla) */
 #define NETMGR_OFF_THREAD_ALIVE  0x59    /* bool: m_networkActive (same offset as vanilla) */
-#define NETMGR_OFF_HOST          0x74    /* ptr: m_host (ENet host) -- vanilla was 0x8C */
+#define NETMGR_OFF_HOST          0x74    /* ptr: m_host (mbnetHost* -- custom UDP/WinSock, not ENet; see NETWORKING_AUDIT §3) -- vanilla was 0x8C */
 #define NETMGR_OFF_THREAD        0x88    /* HANDLE: m_networkThread -- vanilla was 0xA0 */
 #define NETMGR_OFF_PORT          0x94    /* ushort: m_server.m_address.m_port -- vanilla was 0xAC */
 
 /* Absolute addresses for net fields (base + offset) */
 #define ADDR_NET_RUN_FLAG        0xAF7701  /* g_networkManager.m_networkActive (byte: 1=alive) */
 #define ADDR_NET_PROGRESS_STATE  0xAF7724  /* g_networkManager.m_actionCode (int: connection progress) */
-#define ADDR_ENET_HOST_PTR       0xAF771C  /* g_networkManager.m_host (ptr: ENet host) */
+#define ADDR_MBNET_HOST_PTR      0xAF771C  /* g_networkManager.m_host (ptr: mbnetHost* -- custom UDP/WinSock, not ENet; see NETWORKING_AUDIT §3) */
+#define ADDR_STEAM_API_INIT      0xA4F5FB  /* g_isSteamAPIInit (BYTE) -- 1 once the engine's SteamAPI_Init succeeded; gates the Steam tunnel (NETWORKING_AUDIT §4/§7.1) */
 
 /* Bitstream range fields -- changed offsets from vanilla */
 #define NETMGR_OFF_BITS_PLAYER   0x2C    /* m_numBitsPlayer -- vanilla was 0x38 */
@@ -592,6 +593,10 @@ static __inline int mm_encounter_side(void) {
 /* Server list vector: g_multiplayerData.m_serverList */
 #define ADDR_SERVER_LIST        0xA80750  /* rglVector<mbnetServer> */
 #define ADDR_SEARCHING_SERVERS  0xA80769  /* uint8 m_searchingServers */
+#define ADDR_MP_PROFILE_NO      0xA80740  /* int g_multiplayerData.m_profileNo */
+#define ADDR_MP_PROFILES_FIRST  0xA80744  /* mbnetProfile* profiles._Myfirst */
+#define MP_PROFILE_STRIDE       0x90
+#define MP_PROFILE_TAB_OFF      0x74      /* persisted browser source: 0=Internet 1=LAN 2=Favorites (clamped 0..2 by initialize @0x517CD4) */
 #define ADDR_NUM_PLAYERS        0xA807B4
 
 /* g_basicGame stored fields for auto-connect */
@@ -677,9 +682,25 @@ static __inline int mm_encounter_side(void) {
 /* =================================================================== */
 
 /* =================================================================== */
-/*  Runtime-accessible dedicated server addresses (DED_ prefix)         */
-/*  Used by COOP_BATTLE code paths; client/campaign code uses originals */
+/*  Runtime-accessible dedicated server addresses for campaign & battle */
+/*  CAMP_ prefix for campaign server; DED_ prefix for battle servers    */
 /* =================================================================== */
+
+/* Net-tuning patch sites (TRAFFIC_OPTIMIZATION R2-R4). Byte addresses of
+   the 32-bit operand/data values, not the instruction start -- see
+   patches/WarbandDedicated/findings.md "nettune patch sites (2026-07-25)".
+   AIMD cap sites (0x489EF2 campaign / 0x4B4692 battle) are intentionally
+   NOT patched -- cap stays 100000. These are PREFERRED-BASE VAs: both
+   dedicated exes ARE ASLR-slid at runtime (confirmed live -- observed
+   non-zero g_aslr_slide on both host and battle processes), so every
+   consumer must wrap these in REBASE(), never use them as raw literals. */
+#define CAMP_NT_AIMD_STEP    0x00489EED  /* add ecx,imm32 operand -- stock 1000 */
+#define CAMP_NT_AIMD_FLOOR   0x00489ECD  /* mov eax,imm32 operand -- stock 3000 */
+#define CAMP_NT_PKT_MAX      0x004A717A  /* mov eax,imm32 operand -- stock 1350 */
+#define CAMP_NT_SEND_PERIOD  0x00887BC0  /* .rdata float dword -- stock 0.033333335f */
+#define DED_NT_AIMD_STEP     0x004B468D  /* add ecx,imm32 operand -- stock 1000 */
+#define DED_NT_AIMD_FLOOR    0x004B466D  /* mov eax,imm32 operand -- stock 3000 */
+#define DED_NT_PKT_MAX       0x004D2A9A  /* mov eax,imm32 operand -- stock 1350 */
 
 /* CAMP_/DED_ADDR_CUR_GAME and _CUR_MISSION defined near top (feed the
    campaign/battle addr_table instances in warband_addrs_wse2.c) */

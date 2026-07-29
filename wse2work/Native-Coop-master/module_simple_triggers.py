@@ -85,8 +85,19 @@ simple_triggers = [
     (eq, "$g_coop_battle_connect_pending", 1),
     (assign, "$g_coop_battle_connect_pending", 0),
     (str_store_string, s0, "@{s58}"),
-    (str_store_string, s1, "@"),
+    (str_store_string, s1, "@{s57}"), # ASI-mirrored join password (empty when none)
     (multiplayer_connect_to_server, s0, s1, 0),
+   ]),
+
+  # Applies the pool join password once per dedicated process. Battle
+  # servers do not run map simple-triggers, so this only covers the
+  # campaign server -- the battle-server hook is in
+  # module_coop_mission_templates.py's coop_battle start trigger.
+  (0.5,
+   [
+    (eq, "$g_coop_password_applied", 0),
+    (multiplayer_is_dedicated_server),
+    (call_script, "script_coop_apply_server_password"),
    ]),
 
   # DEBUG: make all parties visible on map (remove when not needed)

@@ -182,17 +182,10 @@ multiplayer_event_multiplayer_campaign_server_event_battle_available         = 1
 multiplayer_event_multiplayer_campaign_server_event_first_join    = 11
 multiplayer_event_multiplayer_campaign_server_event_stat_updated  = 12
 multiplayer_event_multiplayer_campaign_server_event_char_data     = 13
-multiplayer_event_multiplayer_campaign_server_event_char_sync_renown = 14
+# 14, 16-19, 21, 23-24 free (was per-value char sync -- replaced by packed 36-40 in R5)
 multiplayer_event_multiplayer_campaign_server_event_equip_slot        = 15
-multiplayer_event_multiplayer_campaign_server_event_char_sync_attr   = 16
-multiplayer_event_multiplayer_campaign_server_event_char_sync_skill  = 17
-multiplayer_event_multiplayer_campaign_server_event_char_sync_prof   = 18
-multiplayer_event_multiplayer_campaign_server_event_char_sync_points = 19
 multiplayer_event_multiplayer_campaign_server_event_char_sync_done   = 20
-multiplayer_event_multiplayer_campaign_server_event_char_sync_xp     = 21
 multiplayer_event_multiplayer_campaign_server_event_party_stack_num_upgradeable = 22
-multiplayer_event_multiplayer_campaign_server_event_char_sync_gold  = 23
-multiplayer_event_multiplayer_campaign_server_event_char_sync_health = 24
 multiplayer_event_multiplayer_campaign_server_event_inv_bag_slot   = 25
 multiplayer_event_multiplayer_campaign_server_event_inv_sync_done  = 26
 # Center/trade/recruit server events (27-35)
@@ -205,9 +198,14 @@ multiplayer_event_multiplayer_campaign_server_event_trade_gold_sync    = 32
 multiplayer_event_multiplayer_campaign_server_event_recruit_data       = 33
 multiplayer_event_multiplayer_campaign_server_event_recruit_result     = 34
 multiplayer_event_multiplayer_campaign_server_event_center_leave_ack   = 35
-# 36-41 free (was local_battle_setup/stack/ready + local_visit_setup/npc/
-# ready -- defined in a WIP commit, never sent or handled; the local
-# encounter flow shipped via ch49 ev 16-17/24-25 instead)
+# Packed char sync (R5): full push = 36+37+38+39+40 + hero_sync_xp*N + done.
+# Payloads are 3x31-bit ints; layouts in coop_char_pack_send_* scripts.
+multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_core     = 36
+multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_a = 37
+multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_b = 38
+multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_profs    = 39
+multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_misc     = 40
+# 41 free
 # Local siege: reply to request_siege_local carrying the wall scene id (42)
 multiplayer_event_multiplayer_campaign_server_event_start_siege_local  = 42
 # Companion hero XP push: (hero_troop_id, xp) -- client applies signed delta (43)

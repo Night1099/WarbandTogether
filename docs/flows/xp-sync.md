@@ -1,15 +1,20 @@
 # Flow: XP Sync (char XP, stack upgrades, battle XP)
 
 **Status:** AUDITED
-**Validated against commit:** `632466c` (A7 loot-gold note closed —
-applier merged `4ba5786`, runtime-verified 2026-07-24; A9 victory-gated
-XP pool noted; prior stamp `fd0e088`)
+**Validated against commit:** `9681486` (net-optimizations: packed char
+sync ch125 ev 36-40 replaces the per-value events this dossier used to
+cite — XP now travels in `packed_misc` (ev 40) rather than the old
+`char_sync_xp` (ev 21); runtime-verified via 2-client smoke, see
+project-state. Prior stamp `632466c`, A7 loot-gold note closed — applier
+merged `4ba5786`, runtime-verified 2026-07-24; A9 victory-gated XP pool
+noted)
 
 ## Scope
 
 How experience reaches player characters and their troops, and how the
 authoritative value stays on the campaign server: (A) the char-XP push
-(ch125 ev 21), (B) the per-stack upgradeable push (ch125 ev 22 — despite the
+(ch125 ev 40 `packed_misc`, part of the 5-message packed full sync), (B)
+the per-stack upgradeable push (ch125 ev 22 — despite the
 event name, it carries upgradeable counts, not XP), and (C) battle XP from
 both battle modes (dedicated Phase 1/2 pipeline; local-fight ch49 ev 17).
 Entry points: player rejoin, `request_char_sync`, battle results. Exit
@@ -27,12 +32,14 @@ sequenceDiagram
     participant CS as Campaign Server
     participant BS as Battle Server
 
-    note over CS,C: A) char XP push (rejoin, ch49 request_char_sync,<br/>or re-push after local-fight XP apply)
-    CS->>C: ch125 16/17/18 attrs/skills/profs (all, unconditional)
-    CS->>C: ch125 19 point pools, 21 xp+level, 24 health, 23 gold
-    CS->>C: ch125 43 hero_sync_xp per companion hero stack (troop, xp)
+    note over CS,C: A) char XP push (rejoin, ch49 request_char_sync,<br/>or re-push after local-fight XP apply) -- 5 packed messages,<br/>join always sends all 5; screen-close re-sync sends only dirty categories
+    CS->>C: ch125 36 packed_core: attrs (6b x4) + level (6b), gold (31b raw),<br/>attr/skill/prof points (8/8/10b)
+    CS->>C: ch125 37/38 packed_skills_a/b: 7 skills per int (4b each), 0-20 / 21-41
+    CS->>C: ch125 39 packed_profs: 3 profs per int (10b each)
+    CS->>C: ch125 40 packed_misc: xp (31b raw), health (7b) + renown (16b<<7)
+    CS->>C: ch125 43 hero_sync_xp per companion hero stack (troop, xp)<br/>-- unconditional every batch, not dirty-gated
     CS->>C: ch125 20 char_sync_done (arms diff-poller baseline)
-    note over C: ev21/ev43: apply SIGNED delta via add_xp_to_troop --<br/>undoes local engine kill-XP inflation, level derives from XP.<br/>ev43 targets the companion's client-local troop copy
+    note over C: ev40/ev43: apply SIGNED delta via add_xp_to_troop --<br/>undoes local engine kill-XP inflation, level derives from XP.<br/>ev43 targets the companion's client-local troop copy
 
     note over CS,C: B) stack upgradeable push
     CS->>C: ch125 22 per stack: num_upgradeable
@@ -56,13 +63,15 @@ sequenceDiagram
 
 | # | Step | File | Line | Symbol |
 |---|------|------|------|--------|
-| 1 | Full char sync push (attrs/skills/profs/points/xp/health/gold/done) | `module_coop_scripts.py` | 6692–6742 | `coop_send_char_sync_to_client` |
-| 2 | — XP value honors pending DLL set_xp | `module_coop_scripts.py` | 6723–6727 | `$g_coop_set_xp_go/troop/value` |
-| 3 | Client receive: signed-delta XP apply | `module_coop_scripts.py` | 6794–6809 | `coop_char_client_receive` (ev 21) |
+| 1 | Full char sync push: 5 packed messages + hero-xp + done | `module_coop_scripts.py` | 7090–7102 | `coop_send_char_sync_to_client` (calls `coop_char_pack_send_core/skills/profs/misc` in sequence) |
+| 1b | Packed-message builders (core/skills/profs/misc) | `module_coop_scripts.py` | 6935–7067 | `coop_char_pack_send_core` (ev 36), `_skills` (ev 37/38), `_profs` (ev 39), `_misc` (ev 40) |
+| 2 | — XP value honors pending DLL set_xp | `module_coop_scripts.py` | 7052–7056 | `$g_coop_set_xp_go/troop/value` (in `coop_char_pack_send_misc`) |
+| 3 | Client receive: signed-delta XP apply | `module_coop_scripts.py` | 7203–7224 | `coop_char_client_receive` (ev 40 `packed_misc` arm) |
 | 3b | Companion hero XP push + client apply (ev 43) | `module_coop_scripts.py` | 6748–6764, 6836–6851 | per hero stack in `coop_send_char_sync_to_client` (player-troop range excluded); client signed-delta apply on the hero troop |
 | 3c | Post-local-fight char sync re-push | `module_coop_scripts.py` | 9130–9132 | ev-17 arm after `coop_apply_xp_shares` + save — without it client player/companion XP is stale until the next rejoin or C-screen open |
-| 4 | Client receive: snapshot mirror per field | `module_coop_scripts.py` | 6749–6792 | `slot_coop_char_snap_*` on `trp_temp_troop` |
-| 5 | Sync-done gate for diff poller | `module_coop_scripts.py` | 6817–6821 | `$g_coop_char_snap_ready` |
+| 3d | Selective push-back on screen close: category bitfield gates which packed messages re-send | `module_coop_scripts.py` | 10299–10339 | `request_char_sync` (ch49 ev 7) arm — `coop_char_dirty_*` bits (attrs/gold/points→core, skills→skills, profs→profs, xp/health/renown→misc); hero-xp + done always sent, even with a clean (0) dirty mask |
+| 4 | Client receive: snapshot mirror per field | `module_coop_scripts.py` | 7104–7245 | `slot_coop_char_snap_*` on `trp_temp_troop`, written in each packed arm of `coop_char_client_receive` |
+| 5 | Sync-done gate for diff poller | `module_coop_scripts.py` | 7240–7244 | `$g_coop_char_snap_ready` |
 | 6 | Push triggers on rejoin | `module_coop_scripts.py` | 8221–8224 | `coop_send_char_sync_to_client`, `coop_send_party_upgradeable_to_client` |
 | 7 | Stack upgradeable push (ev 22 sender) | `module_coop_scripts.py` | 9678–9693 | `coop_send_party_upgradeable_to_client` (`party_stack_get_num_upgradeable`) |
 | 8 | Stack upgradeable client apply | `module_coop_scripts.py` | 8488–8498 | `party_stack_set_num_upgradeable` |
@@ -79,11 +88,22 @@ sequenceDiagram
 
 ## State & events
 
-- **Events:** ch125: `char_sync_attr/skill/prof`=16/17/18, `char_sync_points`=19,
-  `char_sync_done`=20, `char_sync_xp`=21, `party_stack_num_upgradeable`=22
-  (renamed from `party_stack_xp` in C5), `char_sync_gold`=23, `char_sync_health`=24,
-  `hero_sync_xp`=43 (companion troop id + xp, signed-delta apply). ch49:
-  `request_char_sync`=7, `local_fight_result`=17 (`header_common.py`).
+- **Events:** ch125 (net-optimizations packed sync, replaces the old
+  per-value events 14/16-19/21/23/24, which are deleted and free):
+  `char_sync_packed_core`=36 (attrs 6b×4 + level 6b, gold 31b raw, attr/skill/
+  prof points 8/8/10b), `char_sync_packed_skills_a`=37 / `_skills_b`=38
+  (7 skills per int, 4b each, ranges 0-20/21-41), `char_sync_packed_profs`=39
+  (3 profs per int, 10b each), `char_sync_packed_misc`=40 (xp 31b raw,
+  health 7b | renown 16b<<7), `char_sync_done`=20 (unchanged),
+  `party_stack_num_upgradeable`=22 (unchanged, renamed from `party_stack_xp`
+  in C5), `hero_sync_xp`=43 (companion troop id + xp, signed-delta apply,
+  unconditional every sync batch). A full sync is 5 packed messages + ev 43
+  per companion hero + ev 20 done (~7-10 messages vs the pre-packing 59+).
+  ch49: `request_char_sync`=7 (screen-close re-sync: server flushes the
+  deferred save then re-sends only the packed messages whose
+  `coop_char_dirty_*` category bit is set — an unchanged char screen close
+  sends hero-xp + done only, no packed message), `local_fight_result`=17
+  (`header_common.py`).
 - **Dict keys:** char dicts: `@char_battle_pending`, `@char_pending_party_xp`,
   `@char_pending_hero_xp`; battle dict: `@battle_xp_rand`,
   `@battle_num_players`, `@battle_player_{i}_name/strength`, `@hero_{i}_xp`.
@@ -96,10 +116,12 @@ sequenceDiagram
 ## Invariants
 
 - **Server XP is authoritative; the client applies signed deltas**
-  (`:6804–6809`) — this is what cancels the client engine's local kill-XP
-  inflation. Never push absolute XP by `troop_set_*` on the client.
+  (`:7210–7215`, ev 40 `packed_misc` arm) — this is what cancels the client
+  engine's local kill-XP inflation. Never push absolute XP by `troop_set_*`
+  on the client.
 - **Companion troop XP reaches the client ONLY via ev 43** (runtime-verified
-  2026-07-10, `13ebcad`): ev 21 is player-troop-only, ev 22 carries
+  2026-07-10, `13ebcad`; still true after the net-optimizations packing):
+  ev 40 (`packed_misc`) is player-troop-only, ev 22 carries
   upgradeable counts, and the C-layer snapshot has no troop XP — without
   ev 43 the sheet shows an unsynced local copy that inflates in local
   missions and resets on rejoin.
@@ -129,7 +151,7 @@ sequenceDiagram
 | 3 | Local-fight XP applied entirely as party share (`party_add_xp` distribution) | `module_coop_scripts.py:8956–8959`, `:9534–9547` | Native SP applies the whole pool via `party_add_xp` to the main party (`module_scripts.py:15373`) — same semantics | OK |
 | 4 | One XP-credit path reaches heroes on the dedicated battle path: the campaign-side hero restore skips the `@hero_{i}_xp` re-apply (`$g_coop_skip_hero_xp_restore` set around the restore in `coop_apply_battle_results`, `:9430–9432` @ `fc1f204`), so the computed Phase 1/2 pool share is the sole credit — SP parity. Fixed in `50f4ac1`, runtime-verified 2026-07-10 (companion gained a normal SP-sized share once; not double, not zero) | `module_coop_scripts.py:5251`, `:9430–9432` (@ `fc1f204`) | RE-confirmed (`patches/Warband/findings.md` "Engine mission kill-XP paths", `patches/WSE2Dedicated/kb.h`): the WSE2 dedicated server writes hero `m_experience` per kill for game types 11/12 (writer `0x487A90`), with **no game-type gate** — same mechanism the client-side local-fight path explicitly undoes (`:6798–6809`). The dedicated path previously round-tripped it through `@hero_{i}_xp` AND added the pool share on top (heroes paid twice); the skip flag makes the pool share canonical. | OK |
 | 5 | Event 22 renamed `party_stack_num_upgradeable` (constant + script `coop_send_party_upgradeable_to_client`) and project-state row corrected — the name now matches the payload. Fixed in `1dc8fec`, runtime smoke passed 2026-07-11 | `module_coop_scripts.py` sender/recv arm; `header_common.py` | Sender uses `party_stack_get_num_upgradeable`, receiver `party_stack_set_num_upgradeable` — misnaming was doc/constant drift only | OK |
-| 6 | Level + points: level derived from XP by the client engine; point pools pushed server-authoritatively (ev 19); AGI WP bonus intentionally absent outside native UI | `module_coop_scripts.py:6716–6730`, `:6781–6792` | Engine derives level from XP identically on both sides; the AGI/WP and proficiency-cost deviations are known, documented engine lessons (workbench project-state notes) | OK |
+| 6 | Level + points: level derived from XP by the client engine; point pools pushed server-authoritatively (packed into ev 36 `packed_core`, int3); AGI WP bonus intentionally absent outside native UI | `module_coop_scripts.py:6935–6968`, `:7108–7141` | Engine derives level from XP identically on both sides; the AGI/WP and proficiency-cost deviations are known, documented engine lessons (workbench project-state notes) | OK |
 
 ## Fix list
 

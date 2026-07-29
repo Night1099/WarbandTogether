@@ -1,7 +1,10 @@
 # Flow: Battle Pipeline (dedicated battle end-to-end)
 
 **Status:** AUDITED
-**Validated against commit:** `0b2500a` (multiserver pass: sequence,
+**Validated against commit:** `9681486` (net-optimizations: ch125 ev 14's
+history note corrected — its A7-era reuse as `char_sync_renown` is itself
+now superseded by the packed char-sync (ev 36-40, see `xp-sync.md`), so
+ev 14 is free again. Prior stamp `0b2500a`: multiserver pass — sequence,
 anchors, state, and invariants updated to the per-slot battle pool —
 PR #11 + battle chooser + join-time ev-10 re-announce, all
 runtime-verified 2026-07-18; prior stamp `632466c` for the A9 row flip)
@@ -142,7 +145,10 @@ Line numbers verified @ `0b2500a`.
   `battle_rejected`=44 (param 0 = pool full, param 1 = battle server lost
   mid-battle), `battle_slot_closed`=45 (clears a client chooser row);
   id 14, freed by the dead-`return_to_campaign` removal (audit row 7), was
-  later reused by A7 as `char_sync_renown`. ch126 battle events:
+  later reused by A7 as `char_sync_renown` — that per-value event was
+  itself deleted by the net-optimizations packed char-sync (renown now
+  travels in `packed_misc`, ev 40 — see `xp-sync.md`), so id 14 is free
+  again. ch126 battle events:
   `coop_event_*` (`module_constants.py`), incl. A9's ev 52
   `coop_event_battle_retreat`; ch127 ev 53 pushes initiator identity
   per-join. ENet IPC (7242) — the only C-layer wire since B8 (`a68b8ae`):

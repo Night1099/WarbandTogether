@@ -15,6 +15,7 @@
 #include "battle_ipc.h"
 #include "wsedict.h"
 #include "modglobals.h"
+#include "nettune.h"
 #include <shlobj.h>  /* SHGetFolderPathA */
 
 /* ------------------------------------------------------------------ */
@@ -52,6 +53,8 @@ static coop_mode_t g_coop_mode = COOP_HOST;
 static int         g_port = 7240;
 static char        g_host_ip[64] = "127.0.0.1";
 static char        g_module_name[64] = "NativeCoop";
+static char        g_server_password[64] = "";
+static char        g_ini_path[MAX_PATH];  /* stashed for nettune_apply, called once g_log is open */
 
 /* ------------------------------------------------------------------ */
 /*  Module global variable indices -- resolved from variables.txt      */
@@ -336,7 +339,7 @@ static void coop_post_frame(void) {
 /* ------------------------------------------------------------------ */
 
 static void coop_load_ini(const char *dll_dir) {
-    char ini_path[MAX_PATH];
+    char *ini_path = g_ini_path;
 
     lstrcpynA(ini_path, dll_dir, MAX_PATH);
     lstrcatA(ini_path, "coop.ini");
@@ -355,6 +358,7 @@ static void coop_load_ini(const char *dll_dir) {
     g_port = GetPrivateProfileIntA("Coop", "Port", 7240, ini_path);
     GetPrivateProfileStringA("Coop", "HostIP", "127.0.0.1", g_host_ip, sizeof(g_host_ip), ini_path);
     GetPrivateProfileStringA("Coop", "Module", "NativeCoop", g_module_name, sizeof(g_module_name), ini_path);
+    GetPrivateProfileStringA("Coop", "Password", "", g_server_password, sizeof(g_server_password), ini_path);
 
     if (g_coop_mode == COOP_BATTLE) {
         char slot_str[8];
@@ -365,9 +369,10 @@ static void coop_load_ini(const char *dll_dir) {
         coop_log("battle slot: %d (COOP_BATTLE_SLOT env)\n", g_battle_slot);
     }
 
-    coop_log("config: mode=%s port=%d host=%s module=%s\n",
+    coop_log("config: mode=%s port=%d host=%s module=%s password=%s\n",
              g_coop_mode == COOP_HOST ? "host" : "battle",
-             g_port, g_host_ip, g_module_name);
+             g_port, g_host_ip, g_module_name,
+             g_server_password[0] ? "set" : "none");
 }
 
 /* ------------------------------------------------------------------ */
@@ -452,6 +457,26 @@ static void get_wse_dict_dir(char *out, int out_size) {
     lstrcatA(out, "WSE\\");
     lstrcatA(out, g_module_name);
     lstrcatA(out, "\\");
+}
+
+/* ------------------------------------------------------------------ */
+/*  Server config dict writing                                        */
+/* ------------------------------------------------------------------ */
+
+static void write_server_cfg_dict(void) {
+    char dir[MAX_PATH], path[MAX_PATH];
+    wsedict_t *d;
+    get_wse_dict_dir(dir, sizeof(dir));
+    _snprintf(path, sizeof(path), "%scoop_server_cfg.wsedict", dir);
+    d = wsedict_create();
+    if (!d) return;
+    wsedict_set_str(d, "server_password", g_server_password);
+    if (wsedict_save(d, path) == 0)
+        coop_log("server cfg dict written (%s, password=%s)\n",
+                 path, g_server_password[0] ? "set" : "none");
+    else
+        coop_log("server cfg dict WRITE FAILED (%s)\n", path);
+    wsedict_free(d);
 }
 
 /* ------------------------------------------------------------------ */
@@ -726,6 +751,10 @@ void campaign_init_from_ini(const char *dll_dir) {
              g_coop_mode == COOP_HOST ? "host" : "battle",
              g_aslr_slide);
 
+    /* Runs after g_log is open (for visible [nettune] lines) and after
+       g_aslr_slide is computed (nettune_apply rebases every site by it). */
+    nettune_apply(g_coop_mode == COOP_BATTLE, g_ini_path);
+
     {
         modglobals_desc d;
         d.vec_first_addr = REBASE(g_addrs->global_vars_vec);
@@ -733,6 +762,9 @@ void campaign_init_from_ini(const char *dll_dir) {
         modglobals_init(&d);
     }
     resolve_battle_global_indices();
+
+    /* Write server config dict (both campaign and battle personalities) */
+    write_server_cfg_dict();
 
     /* Battle server binary has different function addresses from client/campaign.
        Hooks use client addresses via REBASE() -- installing them on the battle

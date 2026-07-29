@@ -462,6 +462,14 @@ coop_mission_templates = [
           (store_add, ":troop_no", multiplayer_campaign_player_troops_begin, ":player_no"),
           (player_set_troop_id, ":player_no", ":troop_no"),
           (call_script, "script_coop_load_character", ":player_no"),
+          # Hydration state (issue #15): battle-server saves (raise arms) are
+          # gated on a completed load -- a failed load must never persist.
+          (try_begin),
+            (eq, reg0, 1),
+            (player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
+          (else_try),
+            (player_set_slot, ":player_no", slot_player_coop_char_state, 0),
+          (try_end),
         (try_end),
 
          ]),
@@ -553,6 +561,15 @@ coop_mission_templates = [
            (assign, ":rain_type", 0),
          (try_end),
          (set_rain, ":rain_type" , ":rain_amount"), #1=rain 2=snow
+
+         # Battle servers do not run map simple-triggers, so this template's
+         # own start trigger is the hook for the campaign trigger's
+         # counterpart in module_simple_triggers.py.
+         (try_begin),
+           (eq, "$g_coop_password_applied", 0),
+           (multiplayer_is_dedicated_server),
+           (call_script, "script_coop_apply_server_password"),
+         (try_end),
 
          ]),
 
@@ -4607,6 +4624,14 @@ coop_mission_templates = [
           (store_add, ":troop_no", multiplayer_campaign_player_troops_begin, ":player_no"),
           (player_set_troop_id, ":player_no", ":troop_no"),
           (call_script, "script_coop_load_character", ":player_no"),
+          # Hydration state (issue #15): battle-server saves (raise arms) are
+          # gated on a completed load -- a failed load must never persist.
+          (try_begin),
+            (eq, reg0, 1),
+            (player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
+          (else_try),
+            (player_set_slot, ":player_no", slot_player_coop_char_state, 0),
+          (try_end),
         (try_end),
        ]),
 

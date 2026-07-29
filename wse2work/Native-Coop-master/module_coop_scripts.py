@@ -1242,10 +1242,6 @@ coop_scripts = [
           # (neg|is_between, ":hero_troop", kings_begin, pretenders_end),
           (str_store_troop_name, s0, ":hero_troop"),
           (multiplayer_send_string_to_player, ":player_no", multiplayer_event_coop_send_to_player_string, s0),
-
-          #(troop_get_face_keys, reg1, ":hero_troop"),
-          #(str_store_face_keys, s0, reg1),
-          (multiplayer_send_string_to_player, ":player_no", multiplayer_event_coop_send_to_player_string, s0),
         (try_end),
 
         #(try_for_range, ":attribute", ca_strength, ca_intelligence),#0,1 #Def
@@ -1276,10 +1272,6 @@ coop_scripts = [
         (try_begin),
           # (neg|is_between, ":hero_troop", kings_begin, pretenders_end),
           (str_store_troop_name, s0, ":hero_troop"),
-          (multiplayer_send_string_to_player, ":player_no", multiplayer_event_coop_send_to_player_string, s0),
-
-          #(troop_get_face_keys, reg1, ":hero_troop"),
-          #(str_store_face_keys, s0, reg1),
           (multiplayer_send_string_to_player, ":player_no", multiplayer_event_coop_send_to_player_string, s0),
         (try_end),
 
@@ -2302,6 +2294,10 @@ coop_scripts = [
           (player_set_slot, ":player_no", 57, ":earlylife"),
         (else_try),
           (eq, ":event_subtype", coop_event_char_creation_life),
+          # Issue #15: only a player the join flow routed to creation may
+          # create -- a loaded character must never be re-created.
+          (player_get_slot, ":char_state", ":player_no", slot_player_coop_char_state),
+          (eq, ":char_state", coop_char_state_creation),
           (store_script_param, ":adulthood", 4),
           (store_script_param, ":reason", 5),
           # Retrieve stored partial choices
@@ -2310,6 +2306,7 @@ coop_scripts = [
           (player_get_slot, ":earlylife", ":player_no", 57),
           # Apply all modifiers
           (call_script, "script_coop_apply_character_creation", ":player_no", ":gender", ":father", ":earlylife", ":adulthood", ":reason"),
+          (player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
           (call_script, "script_coop_send_equipment_to_client", ":player_no"),
           # Spawn near Praven by default
           (player_get_party_id, ":party_no", ":player_no"),
@@ -2396,18 +2393,8 @@ coop_scripts = [
         (try_end),
       (else_try),
 #NEW
-        (eq, "$coop_string_received", 2), 
+        (eq, "$coop_string_received", 2),
         (troop_set_name, "$coop_last_hero_received", s0),
-        (assign, "$coop_string_received", 3), 
-      (else_try),
-        (eq, "$coop_string_received", 3), 
-        (try_begin),
-          (neg|is_vanilla_warband),
-          (face_keys_store_string, reg1, s0),
-          #ENVFIX(troop_set_face_keys, "$coop_last_hero_received", reg1),
-        (try_end),
-        (assign, "$coop_string_received", 2), 
-
       (else_try),
         (eq, "$coop_string_received", 4), #set by coop_event_round
         (server_set_password, s0),
@@ -6893,17 +6880,25 @@ coop_scripts = [
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_raise_attribute),  # 4
         (store_script_param, ":attr_id", 3),
         (store_script_param, ":count", 4),
+        # Dirty the category BEFORE validating: a raise attempt means the
+        # client's optimistic local value may diverge, and a rejected raise
+        # must still be corrected by the close-push (ch49 ev 7).
+        (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+        (val_or, ":dirty", coop_char_dirty_attrs),
+        (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
         (player_get_troop_id, ":troop_no", ":player_no"),
         (is_between, ":attr_id", 0, 4),
         (gt, ":count", 0),
         (try_for_range, ":unused", 0, ":count"),
             (troop_raise_attribute, ":troop_no", ":attr_id", 1),
         (try_end),
-        (player_set_slot, ":player_no", slot_player_coop_char_dirty, 1),
       (else_try),
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_raise_skill),  # 5
         (store_script_param, ":skill_id", 3),
         (store_script_param, ":count", 4),
+        (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+        (val_or, ":dirty", coop_char_dirty_skills),
+        (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
         (player_get_troop_id, ":troop_no", ":player_no"),
         (is_between, ":skill_id", 0, 42),
         (gt, ":count", 0),
@@ -6912,18 +6907,19 @@ coop_scripts = [
             (lt, ":cur_level", 10),
             (troop_raise_skill, ":troop_no", ":skill_id", 1),
         (try_end),
-        (player_set_slot, ":player_no", slot_player_coop_char_dirty, 1),
       (else_try),
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_raise_proficiency),  # 6
         (store_script_param, ":prof_id", 3),
         (store_script_param, ":delta", 4),
+        (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+        (val_or, ":dirty", coop_char_dirty_profs),
+        (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
         (player_get_troop_id, ":troop_no", ":player_no"),
         (is_between, ":prof_id", 0, 7),
         (gt, ":delta", 0),
         (try_for_range, ":unused", 0, ":delta"),
             (troop_raise_proficiency_linear, ":troop_no", ":prof_id", 1),
         (try_end),
-        (player_set_slot, ":player_no", slot_player_coop_char_dirty, 1),
       (else_try),
         # Client sends its engine-authoritative pool values after all
         # raise events. Replaces the old per-handler manual charging
@@ -6938,65 +6934,152 @@ coop_scripts = [
         (troop_set_attribute_points, ":troop_no", ":attr_pts"),
         (troop_set_skill_points, ":troop_no", ":skill_pts"),
         (troop_set_proficiency_points, ":troop_no", ":prof_pts"),
-        (player_set_slot, ":player_no", slot_player_coop_char_dirty, 1),
+        (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+        (val_or, ":dirty", coop_char_dirty_points),
+        (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
       (try_end),
   ]),
 
-  ("coop_send_char_sync_to_client",
+  ("coop_char_pack_send_core",
+    # ev 36: int1 = attrs0-3 (6b each, bits 0-23) | level (6b, bits 24-29)
+    #        int2 = gold raw (31b)
+    #        int3 = attr_pts (8b) | skill_pts (8b, <<8) | prof_pts (10b, <<16)
     [
       (store_script_param, ":player_no", 1),
       (player_get_troop_id, ":troop_no", ":player_no"),
-      # Attributes
+      (assign, ":int1", 0),
       (try_for_range, ":attr", 0, 4),
           (store_attribute_level, ":val", ":troop_no", ":attr"),
-          (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-              multiplayer_event_multiplayer_campaign_server_event_char_sync_attr, ":attr", ":val"),
+          (val_min, ":val", 63),
+          (store_mul, ":shift", ":attr", 6),
+          (val_lshift, ":val", ":shift"),
+          (val_or, ":int1", ":val"),
       (try_end),
-      # Skills -- push all 42 unconditionally so client stale values can't
-      # persist when the server value is 0 (matches attrs/profs behavior).
-      (try_for_range, ":skl", 0, num_coop_skills),
-          (store_skill_level, ":val", ":skl", ":troop_no"),
-          (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-              multiplayer_event_multiplayer_campaign_server_event_char_sync_skill, ":skl", ":val"),
+      (store_character_level, ":lvl", ":troop_no"),
+      (val_min, ":lvl", 63),
+      (val_lshift, ":lvl", 24),
+      (val_or, ":int1", ":lvl"),
+      (store_troop_gold, ":int2", ":troop_no"),
+      (troop_get_attribute_points, ":ap", ":troop_no"),
+      (val_min, ":ap", 255),
+      (troop_get_skill_points, ":sp", ":troop_no"),
+      (val_min, ":sp", 255),
+      (troop_get_proficiency_points, ":pp", ":troop_no"),
+      (val_min, ":pp", 1023),
+      (assign, ":int3", ":ap"),
+      (val_lshift, ":sp", 8),
+      (val_or, ":int3", ":sp"),
+      (val_lshift, ":pp", 16),
+      (val_or, ":int3", ":pp"),
+      (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+          multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_core, ":int1", ":int2", ":int3"),
+  ]),
+
+  ("coop_char_pack_send_skills",
+    # ev 37 (skills 0-20) + ev 38 (skills 21-41): 7 skills per int, 4b each
+    [
+      (store_script_param, ":player_no", 1),
+      (player_get_troop_id, ":troop_no", ":player_no"),
+      (try_for_range, ":msg", 0, 2),
+          (store_mul, ":base", ":msg", 21),
+          (assign, ":int1", 0),
+          (try_for_range, ":k", 0, 7),
+              (store_add, ":skl", ":base", ":k"),
+              (store_skill_level, ":val", ":skl", ":troop_no"),
+              (val_min, ":val", 15),
+              (store_mul, ":shift", ":k", 4),
+              (val_lshift, ":val", ":shift"),
+              (val_or, ":int1", ":val"),
+          (try_end),
+          (assign, ":int2", 0),
+          (try_for_range, ":k", 0, 7),
+              (store_add, ":skl", ":base", ":k"),
+              (val_add, ":skl", 7),
+              (store_skill_level, ":val", ":skl", ":troop_no"),
+              (val_min, ":val", 15),
+              (store_mul, ":shift", ":k", 4),
+              (val_lshift, ":val", ":shift"),
+              (val_or, ":int2", ":val"),
+          (try_end),
+          (assign, ":int3", 0),
+          (try_for_range, ":k", 0, 7),
+              (store_add, ":skl", ":base", ":k"),
+              (val_add, ":skl", 14),
+              (store_skill_level, ":val", ":skl", ":troop_no"),
+              (val_min, ":val", 15),
+              (store_mul, ":shift", ":k", 4),
+              (val_lshift, ":val", ":shift"),
+              (val_or, ":int3", ":val"),
+          (try_end),
+          (try_begin),
+              (eq, ":msg", 0),
+              (assign, ":ev", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_a),
+          (else_try),
+              (assign, ":ev", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_b),
+          (try_end),
+          (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+              ":ev", ":int1", ":int2", ":int3"),
       (try_end),
-      # Proficiencies
+  ]),
+
+  ("coop_char_pack_send_profs",
+    # ev 39: 3 profs per int, 10b each; int3 carries prof 6 only
+    [
+      (store_script_param, ":player_no", 1),
+      (player_get_troop_id, ":troop_no", ":player_no"),
+      (assign, ":int1", 0),
+      (assign, ":int2", 0),
+      (assign, ":int3", 0),
       (try_for_range, ":wp", 0, 7),
           (store_proficiency_level, ":val", ":troop_no", ":wp"),
-          (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-              multiplayer_event_multiplayer_campaign_server_event_char_sync_prof, ":wp", ":val"),
+          (val_min, ":val", 1023),
+          (store_div, ":which", ":wp", 3),
+          (store_mod, ":pos", ":wp", 3),
+          (store_mul, ":shift", ":pos", 10),
+          (val_lshift, ":val", ":shift"),
+          (try_begin),
+              (eq, ":which", 0),
+              (val_or, ":int1", ":val"),
+          (else_try),
+              (eq, ":which", 1),
+              (val_or, ":int2", ":val"),
+          (else_try),
+              (val_or, ":int3", ":val"),
+          (try_end),
       (try_end),
-      # Point pools
-      (troop_get_attribute_points, ":attr_pts", ":troop_no"),
-      (troop_get_skill_points, ":skill_pts", ":troop_no"),
-      (troop_get_proficiency_points, ":prof_pts", ":troop_no"),
       (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-          multiplayer_event_multiplayer_campaign_server_event_char_sync_points, ":attr_pts", ":skill_pts", ":prof_pts"),
-      # XP and level (server-authoritative)
-      (troop_get_xp, ":xp", ":troop_no"),
+          multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_profs, ":int1", ":int2", ":int3"),
+  ]),
+
+  ("coop_char_pack_send_misc",
+    # ev 40: int1 = xp raw (31b); int2 = health (7b, bits 0-6) | renown (16b, bits 7-22)
+    [
+      (store_script_param, ":player_no", 1),
+      (player_get_troop_id, ":troop_no", ":player_no"),
+      (troop_get_xp, ":int1", ":troop_no"),
       (try_begin),
           (eq, "$g_coop_set_xp_go", 1),
           (eq, "$g_coop_set_xp_troop", ":troop_no"),
-          (assign, ":xp", "$g_coop_set_xp_value"),
+          (assign, ":int1", "$g_coop_set_xp_value"),
       (try_end),
-      (store_character_level, ":level", ":troop_no"),
-      (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-          multiplayer_event_multiplayer_campaign_server_event_char_sync_xp, ":xp", ":level"),
-      # Health (server-authoritative; native char window reads troop struct)
       (store_troop_health, ":health", ":troop_no"),
-      (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-          multiplayer_event_multiplayer_campaign_server_event_char_sync_health, ":health"),
-      # Gold
-      (store_troop_gold, ":gold", ":troop_no"),
-      (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-          multiplayer_event_multiplayer_campaign_server_event_char_sync_gold, ":gold"),
-      # Renown (server-authoritative; feeds party-size limit renown/25)
+      (val_min, ":health", 127),
       (troop_get_slot, ":renown", ":troop_no", slot_troop_renown),
-      (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-          multiplayer_event_multiplayer_campaign_server_event_char_sync_renown, ":renown"),
-      # Companion hero XP (server-authoritative). The client's local copy of
-      # a companion troop drifts -- engine kill XP during local missions,
-      # reset on rejoin -- and nothing else syncs it. Push the target value
-      # per hero stack; the client applies a signed delta like ev 21.
+      (val_max, ":renown", 0),
+      (val_min, ":renown", 65535),
+      (assign, ":int2", ":health"),
+      (val_lshift, ":renown", 7),
+      (val_or, ":int2", ":renown"),
+      (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+          multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_misc, ":int1", ":int2", 0),
+  ]),
+
+  ("coop_char_send_hero_xp",
+    # ev 43 per companion: corrects client-side XP drift (engine kill XP
+    # in local missions). Not dirty-gated -- the drift is invisible to
+    # the server, so every sync batch refreshes it.
+    [
+      (store_script_param, ":player_no", 1),
       (player_get_party_id, ":party_no", ":player_no"),
       (try_begin),
           (party_is_active, ":party_no"),
@@ -7010,6 +7093,16 @@ coop_scripts = [
                   multiplayer_event_multiplayer_campaign_server_event_hero_sync_xp, ":stack_troop", ":hero_xp"),
           (try_end),
       (try_end),
+  ]),
+
+  ("coop_send_char_sync_to_client",
+    [
+      (store_script_param, ":player_no", 1),
+      (call_script, "script_coop_char_pack_send_core", ":player_no"),
+      (call_script, "script_coop_char_pack_send_skills", ":player_no"),
+      (call_script, "script_coop_char_pack_send_profs", ":player_no"),
+      (call_script, "script_coop_char_pack_send_misc", ":player_no"),
+      (call_script, "script_coop_char_send_hero_xp", ":player_no"),
       # Done
       (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
           multiplayer_event_multiplayer_campaign_server_event_char_sync_done, 0),
@@ -7020,72 +7113,128 @@ coop_scripts = [
     [
       (store_script_param, ":event_type", 1),
       (try_begin),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_attr),  # 16
-        (store_script_param, ":attr_id", 2),
-        (store_script_param, ":val", 3),
+        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_core),  # 36
+        (store_script_param, ":int1", 2),
+        (store_script_param, ":int2", 3),
+        (store_script_param, ":int3", 4),
         (multiplayer_get_my_player, ":my_player"),
         (player_get_troop_id, ":troop_no", ":my_player"),
-        (troop_set_attribute, ":troop_no", ":attr_id", ":val"),
-        # Mirror into the diff snapshot so the close-poller baseline is
-        # the authoritative server value, not whatever the client troop
-        # held at C-screen open time. Prevents false-positive raises
-        # from the wse_window_opened / request_char_sync race.
-        (store_add, ":snap_slot", slot_coop_char_snap_attr_begin, ":attr_id"),
-        (troop_set_slot, "trp_temp_troop", ":snap_slot", ":val"),
+        # attrs + snap mirror (level bits 24-29 are display-only; XP drives level)
+        (try_for_range, ":attr", 0, 4),
+            (store_mul, ":shift", ":attr", 6),
+            (assign, ":tmp", ":int1"),
+            (val_rshift, ":tmp", ":shift"),
+            (store_and, ":val", ":tmp", 0x3F),
+            (troop_set_attribute, ":troop_no", ":attr", ":val"),
+            (store_add, ":snap_slot", slot_coop_char_snap_attr_begin, ":attr"),
+            (troop_set_slot, "trp_temp_troop", ":snap_slot", ":val"),
+        (try_end),
+        # gold (replace-in-full, as the old ev 23 arm did)
+        (store_troop_gold, ":cg", ":troop_no"),
+        (try_begin), (gt, ":cg", 0), (troop_remove_gold, ":troop_no", ":cg"), (try_end),
+        (try_begin), (gt, ":int2", 0), (troop_add_gold, ":troop_no", ":int2"), (try_end),
+        # point pools + snap mirror
+        (store_and, ":ap", ":int3", 0xFF),
+        (assign, ":tmp", ":int3"),
+        (val_rshift, ":tmp", 8),
+        (store_and, ":sp", ":tmp", 0xFF),
+        (assign, ":tmp", ":int3"),
+        (val_rshift, ":tmp", 16),
+        (store_and, ":pp", ":tmp", 0x3FF),
+        (troop_set_attribute_points, ":troop_no", ":ap"),
+        (troop_set_skill_points, ":troop_no", ":sp"),
+        (troop_set_proficiency_points, ":troop_no", ":pp"),
+        (troop_set_slot, "trp_temp_troop", slot_coop_char_snap_attr_pts, ":ap"),
+        (troop_set_slot, "trp_temp_troop", slot_coop_char_snap_skill_pts, ":sp"),
+        (troop_set_slot, "trp_temp_troop", slot_coop_char_snap_prof_pts, ":pp"),
       (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_skill),  # 17
-        (store_script_param, ":skill_id", 2),
-        (store_script_param, ":val", 3),
+        (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_a),  # 37
+        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_b),               # 38
+        (store_script_param, ":int1", 2),
+        (store_script_param, ":int2", 3),
+        (store_script_param, ":int3", 4),
         (multiplayer_get_my_player, ":my_player"),
         (player_get_troop_id, ":troop_no", ":my_player"),
-        (troop_set_skill, ":troop_no", ":skill_id", ":val"),
-        (store_add, ":snap_slot", slot_coop_char_snap_skill_begin, ":skill_id"),
-        (troop_set_slot, "trp_temp_troop", ":snap_slot", ":val"),
+        (try_begin),
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_a),
+            (assign, ":base", 0),
+        (else_try),
+            (assign, ":base", 21),
+        (try_end),
+        (try_for_range, ":k", 0, 21),
+            (store_div, ":which", ":k", 7),
+            (store_mod, ":pos", ":k", 7),
+            (try_begin),
+                (eq, ":which", 0),
+                (assign, ":cur", ":int1"),
+            (else_try),
+                (eq, ":which", 1),
+                (assign, ":cur", ":int2"),
+            (else_try),
+                (assign, ":cur", ":int3"),
+            (try_end),
+            (store_mul, ":shift", ":pos", 4),
+            (val_rshift, ":cur", ":shift"),
+            (store_and, ":val", ":cur", 0xF),
+            (store_add, ":skl", ":base", ":k"),
+            (troop_set_skill, ":troop_no", ":skl", ":val"),
+            (store_add, ":snap_slot", slot_coop_char_snap_skill_begin, ":skl"),
+            (troop_set_slot, "trp_temp_troop", ":snap_slot", ":val"),
+        (try_end),
       (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_prof),  # 18
-        (store_script_param, ":prof_id", 2),
-        (store_script_param, ":val", 3),
+        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_profs),  # 39
+        (store_script_param, ":int1", 2),
+        (store_script_param, ":int2", 3),
+        (store_script_param, ":int3", 4),
         (multiplayer_get_my_player, ":my_player"),
         (player_get_troop_id, ":troop_no", ":my_player"),
-        # Write directly to client troop struct (engine doesn't replicate troop profs)
-        (troop_set_proficiency, ":troop_no", ":prof_id", ":val"),
-        (store_add, ":snap_slot", slot_coop_char_snap_prof_begin, ":prof_id"),
-        (troop_set_slot, "trp_temp_troop", ":snap_slot", ":val"),
+        (try_for_range, ":wp", 0, 7),
+            (store_div, ":which", ":wp", 3),
+            (store_mod, ":pos", ":wp", 3),
+            (try_begin),
+                (eq, ":which", 0),
+                (assign, ":cur", ":int1"),
+            (else_try),
+                (eq, ":which", 1),
+                (assign, ":cur", ":int2"),
+            (else_try),
+                (assign, ":cur", ":int3"),
+            (try_end),
+            (store_mul, ":shift", ":pos", 10),
+            (val_rshift, ":cur", ":shift"),
+            (store_and, ":val", ":cur", 0x3FF),
+            (troop_set_proficiency, ":troop_no", ":wp", ":val"),
+            (store_add, ":snap_slot", slot_coop_char_snap_prof_begin, ":wp"),
+            (troop_set_slot, "trp_temp_troop", ":snap_slot", ":val"),
+        (try_end),
       (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_points),  # 19
-        (store_script_param, ":attr_pts", 2),
-        (store_script_param, ":skill_pts", 3),
-        (store_script_param, ":prof_pts", 4),
+        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_misc),  # 40
+        (store_script_param, ":int1", 2),
+        (store_script_param, ":int2", 3),
         (multiplayer_get_my_player, ":my_player"),
         (player_get_troop_id, ":troop_no", ":my_player"),
-        (troop_set_attribute_points, ":troop_no", ":attr_pts"),
-        (troop_set_skill_points, ":troop_no", ":skill_pts"),
-        (troop_set_proficiency_points, ":troop_no", ":prof_pts"),
-        (troop_set_slot, "trp_temp_troop", slot_coop_char_snap_attr_pts, ":attr_pts"),
-        (troop_set_slot, "trp_temp_troop", slot_coop_char_snap_skill_pts, ":skill_pts"),
-        (troop_set_slot, "trp_temp_troop", slot_coop_char_snap_prof_pts, ":prof_pts"),
-      (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_xp),  # 21
-        (store_script_param, ":xp", 2),
-        # Param 3 is :level but we don't pull it -- level is derived from XP
-        # by the engine, so fixing XP fixes the displayed level automatically.
-        # Write authoritative XP into the client troop struct so the native
-        # character window displays the correct value. add_xp_to_troop
-        # accepts negative deltas (header_operations.py:938), which is how
-        # we undo the client engine's local kill-XP inflation on rejoin.
-        (multiplayer_get_my_player, ":my_player"),
-        (player_get_troop_id, ":troop_no", ":my_player"),
+        # XP: signed-delta apply (same rationale as the old ev 21 arm --
+        # add_xp_to_troop takes negative deltas; level derives from XP)
         (troop_get_xp, ":cur_xp", ":troop_no"),
-        (store_sub, ":delta_xp", ":xp", ":cur_xp"),
+        (store_sub, ":delta_xp", ":int1", ":cur_xp"),
         (try_begin),
             (neq, ":delta_xp", 0),
             (add_xp_to_troop, ":delta_xp", ":troop_no"),
         (try_end),
+        # health
+        (store_and, ":health", ":int2", 0x7F),
+        (troop_set_health, ":troop_no", ":health"),
+        # renown -> MP troop slot + trp_player mirror (native report UIs read trp_player)
+        (assign, ":tmp", ":int2"),
+        (val_rshift, ":tmp", 7),
+        (store_and, ":renown_val", ":tmp", 0xFFFF),
+        (troop_set_slot, ":troop_no", slot_troop_renown, ":renown_val"),
+        (troop_set_slot, "trp_player", slot_troop_renown, ":renown_val"),
       (else_try),
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_hero_sync_xp),  # 43
         (store_script_param, ":hero_troop", 2),
         (store_script_param, ":xp", 3),
-        # Companion troop XP: same signed-delta apply as ev 21. Level is
+        # Companion troop XP: same signed-delta apply as ev 40. Level is
         # derived from XP by the engine, so the sheet corrects fully.
         (troop_is_hero, ":hero_troop"),
         (neg|is_between, ":hero_troop", multiplayer_campaign_player_troops_begin, multiplayer_campaign_player_troops_end),
@@ -7096,34 +7245,11 @@ coop_scripts = [
             (add_xp_to_troop, ":delta_xp", ":hero_troop"),
         (try_end),
       (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_health),  # 24
-        (store_script_param, ":health", 2),
-        (multiplayer_get_my_player, ":my_player"),
-        (player_get_troop_id, ":troop_no", ":my_player"),
-        (troop_set_health, ":troop_no", ":health"),
-      (else_try),
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_done),  # 20
         # Mark the diff snapshot as ready. Close-poller gate checks this
         # flag before firing raise events, so a fast close that races
         # the push simply leaves snap_ready=0 and skips the diff.
         (assign, "$g_coop_char_snap_ready", 1),
-      (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_gold),  # 23
-        (store_script_param, ":gold_val", 2),
-        (multiplayer_get_my_player, ":my_player"),
-        (player_get_troop_id, ":troop_no", ":my_player"),
-        (store_troop_gold, ":cg", ":troop_no"),
-        (try_begin), (gt, ":cg", 0), (troop_remove_gold, ":troop_no", ":cg"), (try_end),
-        (try_begin), (gt, ":gold_val", 0), (troop_add_gold, ":troop_no", ":gold_val"), (try_end),
-      (else_try),
-        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_renown),  # 14
-        (store_script_param, ":renown_val", 2),
-        (multiplayer_get_my_player, ":my_player"),
-        (player_get_troop_id, ":troop_no", ":my_player"),
-        (troop_set_slot, ":troop_no", slot_troop_renown, ":renown_val"),
-        # Native report UIs (character report, party-size line) read
-        # trp_player, not the MP troop -- mirror so they display it.
-        (troop_set_slot, "trp_player", slot_troop_renown, ":renown_val"),
       (try_end),
   ]),
 
@@ -7378,6 +7504,21 @@ coop_scripts = [
        # param 1: player_no
        (store_script_param, ":player_no", 1),
 
+       # Hydration gate (issue #15): only a character whose load-or-creation
+       # completed may be persisted. Exit/autosave can fire for a half-joined
+       # ghost whose troop is still the raw template.
+       (player_get_slot, ":char_state", ":player_no", slot_player_coop_char_state),
+       (try_begin),
+           (neq, ":char_state", coop_char_state_ready),
+           (str_store_player_username, s10, ":player_no"),
+           (assign, reg1, ":char_state"),
+           (display_message, "@[CHAR SAVE] BLOCKED for {s10}: char not hydrated (state {reg1})"),
+       (try_end),
+       # Body runs only when hydrated; wrapped (not a bare failing condition)
+       # so a blocked save never aborts the caller's remaining cleanup.
+       (try_begin),
+       (eq, ":char_state", coop_char_state_ready),
+
        (player_get_troop_id, ":troop_no", ":player_no"),
        (player_get_party_id, ":party_no", ":player_no"),
 
@@ -7399,6 +7540,13 @@ coop_scripts = [
        (assign, ":preserved_local_enemy", 0),
        (dict_create, "$coop_char_preserve_dict"),
        (dict_load_file, "$coop_char_preserve_dict", s11),
+       # One-deep backup (issue #15): keep the previous on-disk save as a
+       # _bak file so a bad write is manually recoverable.
+       (try_begin),
+           (dict_has_key, "$coop_char_preserve_dict", "@char_level"),
+           (str_store_string, s12, "@coop_char_bak_{s10}"),
+           (dict_save, "$coop_char_preserve_dict", s12),
+       (try_end),
        (try_begin),
            (dict_has_key, "$coop_char_preserve_dict", "@char_battle_pending"),
            (dict_get_int, ":preserved_pending", "$coop_char_preserve_dict", "@char_battle_pending"),
@@ -7622,6 +7770,7 @@ coop_scripts = [
 
        (assign, reg0, ":player_no"),
        (display_message, "@Character saved for player {reg0}."),
+       (try_end),
    ]),
 
    ("coop_load_character",
@@ -8657,6 +8806,15 @@ coop_scripts = [
 		(call_script, "script_coop_load_character", ":player_no"),
 		(assign, ":char_loaded", reg0),
 
+		# Hydration state (issue #15): ready only after a successful load; a
+		# dict-less join stays in creation state until char creation completes.
+		(try_begin),
+			(eq, ":char_loaded", 1),
+			(player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
+		(else_try),
+			(player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_creation),
+		(try_end),
+
 		# Apply results for every slot with a pending or ended battle.
 		# (A failed condition op inside try_for_range skips to the next
 		# iteration, so this visits all slots.)
@@ -8857,6 +9015,10 @@ coop_scripts = [
 			(party_is_active, ":party_no"),
 			(disable_party, ":party_no"),
 		(try_end),
+
+		# No hydration-state clear needed here: the engine zeroes the whole
+		# player slot vector on disconnect and on every index (re)use
+		# (mbnetPlayer::clear -- findings.md "Issue #15" section).
 
 		# Release center lock held by this player
 		(player_get_slot, ":locked_center", ":player_no", slot_player_coop_locked_center),
@@ -9390,10 +9552,21 @@ coop_scripts = [
 		(store_script_param, ":player_no", 1),
 		(store_script_param, ":adulthood", 2),
 		(store_script_param, ":reason", 3),
+            # Refuse creation unless the join flow routed this player to it
+            # (issue #15): a loaded character must never be re-created.
+            (player_get_slot, ":char_state", ":player_no", slot_player_coop_char_state),
+            (try_begin),
+                (neq, ":char_state", coop_char_state_creation),
+                (str_store_player_username, s10, ":player_no"),
+                (display_message, "@[CHAR CREATE] rejected for {s10}: not awaiting creation"),
+            (try_end),
+            (try_begin),
+            (eq, ":char_state", coop_char_state_creation),
             (player_get_slot, ":gender", ":player_no", 55),
             (player_get_slot, ":father", ":player_no", 56),
             (player_get_slot, ":earlylife", ":player_no", 57),
             (call_script, "script_coop_apply_character_creation", ":player_no", ":gender", ":father", ":earlylife", ":adulthood", ":reason"),
+            (player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
             # Char sync first (fresh attrs/skills/profs): keeps the next
             # C-screen snapshot in step with server state, and the engine
             # bounds inventory-slot writes by the skill-derived capacity --
@@ -9402,6 +9575,7 @@ coop_scripts = [
             (call_script, "script_coop_send_char_sync_to_client", ":player_no"),
             (call_script, "script_coop_push_player_inventory", ":player_no"),
             (call_script, "script_coop_save_character", ":player_no"),
+            (try_end),
         	]),
 
 	# ch49 ev 10: dismiss troops from the player party.
@@ -9459,6 +9633,9 @@ coop_scripts = [
                 (store_troop_gold, ":up_gold", ":up_trp"),
                 (ge, ":up_gold", ":upg_cost"),
                 (troop_remove_gold, ":up_trp", ":upg_cost"),
+                (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+                (val_or, ":dirty", coop_char_dirty_gold),
+                (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
                 (party_remove_members, ":party_no", ":from_troop", ":upg_count"),
                 (party_add_members, ":party_no", ":to_troop", ":upg_count"),
                 # Native upgrades consume the from-stack's per-stack
@@ -9562,6 +9739,12 @@ coop_scripts = [
                 (store_mul, ":abs_delta", ":gold_delta", -1),
                 (troop_remove_gold, ":troop_no", ":abs_delta"),
             (try_end),
+            # Belt-and-braces: ev 32 below already pushes gold for this
+            # window's baseline, but the next screen-close should still see
+            # it dirty in case that push is ever skipped.
+            (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+            (val_or, ":dirty", coop_char_dirty_gold),
+            (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
             (call_script, "script_coop_save_character", ":player_no"),
             # Bought/sold items were applied per trade_change; one
             # authoritative push realigns the client's engine slots and
@@ -9616,6 +9799,9 @@ coop_scripts = [
                     (try_begin),
                         (ge, ":gold", ":total_cost"),
                         (troop_remove_gold, ":troop_no", ":total_cost"),
+                        (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+                        (val_or, ":dirty", coop_char_dirty_gold),
+                        (player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
                         (player_get_party_id, ":party_no", ":player_no"),
                         (party_add_members, ":party_no", ":vol_troop", ":count"),
                         # Deplete volunteer pool
@@ -10048,16 +10234,13 @@ coop_scripts = [
             (store_add, ":snap_mod_slot", slot_coop_inv_snap_equip_mod_begin, ":slot"),
             (troop_set_slot, "trp_temp_troop", ":snap_mod_slot", ":imod"),
         (else_try),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_attr),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_skill),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_prof),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_points),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_xp),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_health),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_done),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_hero_sync_xp),
-            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_renown),
-            (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_gold),
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_core),  # 36
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_a),  # 37
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_skills_b),  # 38
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_profs),  # 39
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_packed_misc),  # 40
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_char_sync_done),  # 20
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_hero_sync_xp),  # 43
             (store_script_param, ":p2", 2),
             (store_script_param, ":p3", 3),
             (store_script_param, ":p4", 4),
@@ -10170,15 +10353,49 @@ coop_scripts = [
             (call_script, "script_coop_char_server_receive", ":player_no", ":event_type", ":p3", ":p4", ":p5"),
         (else_try),
             (eq, ":event_type", multiplayer_event_multiplayer_campaign_request_char_sync),  # 7
-            # Flush deferred save if any raises were applied
+            (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
             (try_begin),
-                (player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
-                (eq, ":dirty", 1),
+                (gt, ":dirty", 0),
+                # Flush the deferred save, then push only the dirty categories.
                 (call_script, "script_coop_save_character", ":player_no"),
+                (try_begin),
+                    (store_and, ":hit", ":dirty", coop_char_dirty_attrs),
+                    (store_and, ":hit2", ":dirty", coop_char_dirty_gold),
+                    (store_and, ":hit3", ":dirty", coop_char_dirty_points),
+                    (this_or_next|gt, ":hit", 0),
+                    (this_or_next|gt, ":hit2", 0),
+                    (gt, ":hit3", 0),
+                    (call_script, "script_coop_char_pack_send_core", ":player_no"),
+                (try_end),
+                (try_begin),
+                    (store_and, ":hit", ":dirty", coop_char_dirty_skills),
+                    (gt, ":hit", 0),
+                    (call_script, "script_coop_char_pack_send_skills", ":player_no"),
+                (try_end),
+                (try_begin),
+                    (store_and, ":hit", ":dirty", coop_char_dirty_profs),
+                    (gt, ":hit", 0),
+                    (call_script, "script_coop_char_pack_send_profs", ":player_no"),
+                (try_end),
+                (try_begin),
+                    (store_and, ":hit", ":dirty", coop_char_dirty_xp),
+                    (store_and, ":hit2", ":dirty", coop_char_dirty_health),
+                    (store_and, ":hit3", ":dirty", coop_char_dirty_renown),
+                    (this_or_next|gt, ":hit", 0),
+                    (this_or_next|gt, ":hit2", 0),
+                    (gt, ":hit3", 0),
+                    (call_script, "script_coop_char_pack_send_misc", ":player_no"),
+                (try_end),
                 (player_set_slot, ":player_no", slot_player_coop_char_dirty, 0),
             (try_end),
-            (call_script, "script_coop_send_char_sync_to_client", ":player_no"),
-            (call_script, "script_coop_send_party_upgradeable_to_client", ":player_no"),
+            # Companion hero XP drifts CLIENT-side (engine kill XP in local
+            # missions) -- the server cannot dirty-track it, so refresh on
+            # every screen close regardless of the dirty mask.
+            (call_script, "script_coop_char_send_hero_xp", ":player_no"),
+            # Always close the batch: the done sentinel re-arms the client's
+            # close-poller gate whether or not anything was pushed.
+            (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+                multiplayer_event_multiplayer_campaign_server_event_char_sync_done, 0),
         (else_try),
             (eq, ":event_type", multiplayer_event_multiplayer_campaign_request_inv_sync),  # 13
             # Inventory-window open: re-push the authoritative inventory so
@@ -11823,7 +12040,43 @@ coop_scripts = [
      #script simply starts the presentation but could have extra features added
 
      (start_presentation, "prsnt_coop_assign_drop_to_group_member"),
-     
-     
+
+
      ]),
+
+  # ==================================================================
+  # SERVER CONFIG (pool-wide settings applied once per dedicated process)
+  # ==================================================================
+
+  # Applies the pool-wide join password from the plugin-written config dict.
+  # Runs once per process on both dedicated personalities; the plugin's
+  # loader thread writes the dict a few seconds after process start, so this
+  # is retried (0.5s trigger + battle hook) until the key actually shows up
+  # -- the flag latches only once that happens, never on a still-missing
+  # file, so an early poll can't skip the password permanently.
+  # Empty/missing key once loaded = no password (native default).
+  ("coop_apply_server_password",
+   [
+     (try_begin),
+       (eq, "$g_coop_password_applied", 0),
+       (multiplayer_is_dedicated_server),
+       (try_begin),
+         (dict_create, ":cfg"),
+         (str_store_string, s40, "@coop_server_cfg"),
+         (dict_load_file, ":cfg", s40, 2),
+         (try_begin),
+           (dict_has_key, ":cfg", "@server_password"),
+           (assign, "$g_coop_password_applied", 1),
+           (try_begin),
+             (dict_get_str, s41, ":cfg", "@server_password"),
+             (str_length, reg40, s41),
+             (gt, reg40, 0),
+             (server_set_password, s41),
+             (display_message, "@[COOP] server password applied"),
+           (try_end),
+         (try_end),
+         (dict_free, ":cfg"),
+       (try_end),
+     (try_end),
+   ]),
 ]

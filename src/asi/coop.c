@@ -40,6 +40,7 @@ void coop_log(const char *fmt, ...) {
 
 #include "warband_addrs_wse2.h"
 #include "modglobals.h"
+#include "steam_tunnel.h"
 
 #define MB_GAME_PLAYER_TROOP_NO    0x3A8    /* offset into mbGame */
 
@@ -75,12 +76,19 @@ static void write_string_register(int index, const char *value) {
 /*  Config                                                            */
 /* ------------------------------------------------------------------ */
 
+/* g_host_ip is the address the browser row and s59 publish. The Steam client
+   proxy re-aims it at loopback; g_host_ip_lan keeps the configured value so
+   the re-aim is reversible when the tunnel dies. Sole writer: the s59
+   thread (see steam_reaim_host_ip). */
 static char g_host_ip[64]       = "127.0.0.1";
+static char g_host_ip_lan[64]   = "127.0.0.1";
 static int  g_port              = 7240;
 static int  g_battle_port       = 7241;
 static char g_module_name[64]   = "NativeCoop";
 static char g_module_label[64]  = "Calradia";  /* module_name from module.ini, used for server list filter */
 static char g_game_dir[MAX_PATH] = "";          /* game directory (dirname of exe), set at DLL load */
+static char g_password[64]      = "";          /* [Coop] Password -- never logged, never sent over the tunnel */
+static steam_cfg_t g_steam_cfg;
 
 /* Resolved at DLL load from variables.txt; index into g_basicGame.m_globalVariables int64 vector */
 static int  g_encountered_party_idx = -1;
@@ -95,12 +103,36 @@ static void read_config(HINSTANCE hinstDLL) {
     lstrcpynA(ini_path, dll_path, MAX_PATH);
     lstrcatA(ini_path, "coop.ini");
     GetPrivateProfileStringA("Coop", "HostIP",  "127.0.0.1",  g_host_ip,     sizeof(g_host_ip),    ini_path);
+    lstrcpynA(g_host_ip_lan, g_host_ip, sizeof(g_host_ip_lan));
     GetPrivateProfileStringA("Coop", "Module",  "NativeCoop",  g_module_name,  sizeof(g_module_name),  ini_path);
     GetPrivateProfileStringA("Coop", "ModuleLabel", "Calradia", g_module_label, sizeof(g_module_label), ini_path);
     g_port        = GetPrivateProfileIntA("Coop", "Port",       7240, ini_path);
     g_battle_port = GetPrivateProfileIntA("Coop", "BattlePort", 7241, ini_path);
-    coop_log("config: host=%s port=%d battle=%d module=%s label=%s\n",
-             g_host_ip, g_port, g_battle_port, g_module_name, g_module_label);
+    GetPrivateProfileStringA("Coop", "Password", "", g_password, sizeof(g_password), ini_path);
+    coop_log("config: host=%s port=%d battle=%d module=%s label=%s password=%s\n",
+             g_host_ip, g_port, g_battle_port, g_module_name, g_module_label,
+             g_password[0] != '\0' ? "set" : "none");
+    /* write_string_register clamps to 47 chars (s57's rglString SSO); a longer
+       password works for the campaign join but silently truncates on every
+       battle-server hop. */
+    if (strlen(g_password) > 47)
+        coop_log("[coop] Password longer than 47 chars -- battle-server hop will truncate; shorten it\n");
+
+    {
+        char steamid_str[32], allowlist_str[512];
+        memset(&g_steam_cfg, 0, sizeof(g_steam_cfg));
+        g_steam_cfg.host  = GetPrivateProfileIntA("Steam", "SteamHost", 0, ini_path);
+        g_steam_cfg.debug = GetPrivateProfileIntA("Steam", "Debug", 0, ini_path);
+        g_steam_cfg.has_password = (g_password[0] != '\0');
+        GetPrivateProfileStringA("Steam", "HostSteamID64", "", steamid_str,
+                                 sizeof(steamid_str), ini_path);
+        GetPrivateProfileStringA("Steam", "AllowedSteamIDs", "", allowlist_str,
+                                 sizeof(allowlist_str), ini_path);
+        steam_cfg_finalize(&g_steam_cfg, steamid_str, allowlist_str);
+        if (g_steam_cfg.role != STEAM_ROLE_OFF)
+            coop_log("config: [Steam] role=%s\n",
+                     g_steam_cfg.role == STEAM_ROLE_HOST ? "host" : "client");
+    }
 }
 
 /* Forward declarations for cross-referenced functions */
@@ -110,18 +142,82 @@ static void flush_result_string_to_file(void);
 /*  s59 writer thread (writes battle server IP to string register)    */
 /* ------------------------------------------------------------------ */
 
+/* The one place g_host_ip changes: swap to loopback while the Steam client
+   proxy is live, back to the ini value when it dies. Readers on the main
+   thread take a snapshot, and the browser injection additionally waits out
+   STEAM_CLI_PENDING, so no reader can observe a half-written address or
+   latch a stale one. */
+static void steam_reaim_host_ip(void) {
+    static int reaimed = 0;
+    int up = steam_tunnel_client_is_up();
+    if (up == reaimed) return;
+    reaimed = up;
+    lstrcpynA(g_host_ip, up ? "127.0.0.1" : g_host_ip_lan, sizeof(g_host_ip));
+    coop_log(up ? "[steam] client proxy up -- HostIP re-aimed to %s (s59 + browser inject)\n"
+                : "[steam] client proxy down -- HostIP restored to %s (LAN fallback)\n",
+             g_host_ip);
+}
+
+/* The MP browser opens on the tab persisted in the active profile
+   (mbnetProfile+0x74; the Internet tab hides the injected coop row).
+   Force it to LAN once, before the browser window is first constructed --
+   initialize @0x516B40 then sets the combo AND auto-starts a LAN scan,
+   so the row appears with zero clicks. Engine clamps the value on read. */
+static void force_browser_lan_default(void) {
+    static int forced = 0;
+    char *profiles;
+    int profile_no, *tab;
+    if (forced) return;
+    profiles   = *(char **)ADDR_MP_PROFILES_FIRST;
+    profile_no = *(int *)ADDR_MP_PROFILE_NO;
+    if (!profiles || profile_no < 0) return;
+    tab = (int *)(profiles + profile_no * MP_PROFILE_STRIDE + MP_PROFILE_TAB_OFF);
+    if (*tab != 1) {
+        *tab = 1;
+        coop_log("browser default tab forced to LAN (profile %d)\n", profile_no);
+    }
+    forced = 1;
+}
+
 static DWORD WINAPI s59_writer_thread(LPVOID param) {
     int written = 0;
+    int pw_prefilled = 0;
     (void)param;
     while (1) {
         Sleep(500);
         flush_result_string_to_file();
+        force_browser_lan_default();
         { /* Check s0 initialized */
             char *s0 = (char *)STRING_REG_BASE;
             if (*(char **)(s0 + 0x04) != s0 + 0x10) continue;
         }
+        steam_reaim_host_ip();
         write_string_register(59, g_host_ip);
+        write_string_register(57, g_password);  /* mirror for module_simple_triggers.py's deferred battle connect */
         if (!written) { coop_log("s59=%s\n", g_host_ip); written = 1; }
+
+        /* One-shot m_storedPassword prefill: covers the engine's own
+           m_switchingModule direct-connect arm only -- a manual browser
+           Connect reads the password textbox instead (RE Q7), so this is
+           belt-and-braces, not the primary password delivery path. In-place
+           write per RE Q8: only safe when the rglString's existing buffer
+           capacity (+0x08) exceeds the new length; never re-point +0x04 at
+           the SSO slot. */
+        if (!pw_prefilled && g_password[0]) {
+            char *rs  = (char *)ADDR_DIRECT_CONNECT_PASS;
+            int   cap = *(int *)(rs + 0x08);
+            int   len = (int)strlen(g_password);
+            if (len < cap) {
+                char *buf = *(char **)(rs + 0x04);
+                memcpy(buf, g_password, len);
+                buf[len] = '\0';
+                *(int *)(rs + 0x0C) = len;
+                coop_log("[steam] stored password prefilled from coop.ini\n");
+            } else {
+                coop_log("[steam] stored password prefill skipped -- exceeds buffer capacity\n");
+            }
+            pw_prefilled = 1;
+        }
     }
     return 0;
 }
@@ -136,19 +232,45 @@ typedef void (__fastcall *fn_thiscall_ptr)(void *ecx, void *edx, void *arg);
 
 static int g_server_injected = 0;
 
+/* A re-Search within 20 s (m_searchType 3) re-pings the CURRENT list
+   without clearing it, so scan-triggered re-injection must not push a
+   second copy of our row. rglString data pointer lives at +0x04. */
+static int server_row_exists(const char *ip, int port) {
+    char *first = *(char **)ADDR_SERVER_LIST;
+    char *last  = *(char **)(ADDR_SERVER_LIST + 4);
+    char *row;
+    if (!first) return 0;
+    for (row = first; row < last; row += 0x180) {
+        const char *row_ip = *(const char **)(row + 0x04);
+        if (*(int *)(row + 0x44) == port && row_ip && strcmp(row_ip, ip) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 static void inject_server(void *browser_window) {
     /* mbnetServer is 0x180 bytes */
     char server[0x180];
+    char host_ip[64];
     fn_thiscall_void server_ctor = (fn_thiscall_void)ADDR_SERVER_CTOR;
     fn_thiscall_void server_dtor = (fn_thiscall_void)ADDR_SERVER_DTOR;
     fn_thiscall_ptr  vec_push    = (fn_thiscall_ptr)ADDR_VEC_PUSH_BACK;
     fn_thiscall_void fill_list   = (fn_thiscall_void)ADDR_FILL_SERVER_LIST;
 
+    /* One snapshot of the address the s59 thread owns */
+    lstrcpynA(host_ip, g_host_ip, sizeof(host_ip));
+
+    if (server_row_exists(host_ip, g_port)) {
+        coop_log("server row %s:%d already listed -- push skipped\n", host_ip, g_port);
+        g_server_injected = 1;
+        return;
+    }
+
     /* Construct default mbnetServer */
     server_ctor((void *)server, NULL);
 
     /* Fill fields */
-    rglstring_init(server + 0x000, g_host_ip);         /* m_ip */
+    rglstring_init(server + 0x000, host_ip);           /* m_ip */
     *(int *)(server + 0x040) = 1;                      /* m_ping */
     *(int *)(server + 0x044) = g_port;                 /* m_port */
     *(int *)(server + 0x048) = -1;                     /* m_siteNo (-1 = campaign, no active mission) */
@@ -159,7 +281,11 @@ static void inject_server(void *browser_window) {
     rglstring_init(server + 0x110, "");                /* m_gameTypeName */
     *(int *)(server + 0x150) = 0;                      /* m_numPlayers */
     *(int *)(server + 0x154) = 10;                     /* m_maxNumPlayers */
-    *(int *)(server + 0x158) = 0;                      /* m_passworded */
+    /* One writer: invite :pw flag (Steam path) or local Password= (host's own
+       client / prefilled joiner). LAN joiners without either degrade to the
+       engine's wrong-password reject. */
+    *(int *)(server + 0x158) =
+        (steam_tunnel_invite_pw() || g_password[0]) ? 1 : 0;  /* m_passworded */
     *(int *)(server + 0x15C) = 1;                      /* m_dedicated */
     *(int *)(server + 0x160) = 1170;                   /* m_gameVersion */
     *(int *)(server + 0x164) = 0;                      /* m_moduleVersion */
@@ -172,7 +298,7 @@ static void inject_server(void *browser_window) {
     fill_list(browser_window, NULL);
 
     coop_log("server injected: %s:%d name='COOP Direct' module=%s\n",
-             g_host_ip, g_port, g_module_label);
+             host_ip, g_port, g_module_label);
 
     /* Cleanup local (vector made a copy) */
     server_dtor((void *)server, NULL);
@@ -241,30 +367,69 @@ static void flush_result_string_to_file(void) {
 }
 
 static void __cdecl browser_framemove_pre(void *this_ptr) {
-    int searching;
+    int searching, mode;
+    /* Edge-logged state so a failed post-join re-injection is diagnosable
+       from the log alone: every early-out below is otherwise silent. */
+    static int s_last_mode = 0x7FFFFFFF;
+    static int s_searching_prev = 0;
+    static int s_pending_logged = 0;
+    static int s_null_table_logged = 0;
 
-    if (*(int *)ADDR_MAP_INTERACTION_MODE == 4) {
+    mode = *(int *)ADDR_MAP_INTERACTION_MODE;
+    if (mode != s_last_mode) {
+        coop_log("browser: gameType=%d (was %d)\n", mode, s_last_mode);
+        s_last_mode = mode;
+    }
+
+    if (mode == 4) {
         flush_result_string_to_file();
         check_pending_local_result();
     }
 
-    if (g_server_injected) return;
-    if (*(int *)ADDR_MAP_INTERACTION_MODE != 4) return;
+    if (mode != 4) return;
 
     searching = *(BYTE *)ADDR_SEARCHING_SERVERS;
 
-    /* Track when LAN scan starts */
+    /* Every scan wipes the engine's server list, taking our row with it --
+       re-arm injection whenever a new scan starts so the row comes back
+       after each refresh/join instead of once per process. */
     if (searching) {
+        if (!s_searching_prev)
+            coop_log("browser: scan started (injection re-armed)\n");
+        s_searching_prev = 1;
         g_scan_was_active = 1;
+        g_server_injected = 0;
         return;
     }
+    s_searching_prev = 0;
+
+    if (g_server_injected) return;
 
     /* Inject after LAN scan finishes (list is stable) */
     if (!g_scan_was_active) return;
 
+    /* Injection is one-shot and the row is never corrected, so it must not
+       fire while the Steam client verdict is still open -- a LAN address
+       latched here would be unroutable for the rest of the session. */
+    if (steam_tunnel_client_state() == STEAM_CLI_PENDING) {
+        if (!s_pending_logged) {
+            coop_log("browser: injection held -- Steam client verdict PENDING\n");
+            s_pending_logged = 1;
+        }
+        return;
+    }
+    s_pending_logged = 0;
+
     {
         void *table = *(void **)((char *)this_ptr + 0x88);
-        if (!table) return;
+        if (!table) {
+            if (!s_null_table_logged) {
+                coop_log("browser: injection waiting -- table widget null\n");
+                s_null_table_logged = 1;
+            }
+            return;
+        }
+        s_null_table_logged = 0;
     }
 
     coop_log("LAN scan done, injecting server entry\n");
@@ -402,7 +567,7 @@ static void __cdecl fixup_meta_mission_for_coop(void) {
 #define OFF_PACKET_SEND_TIME   0x300      /* double m_packetSendTime */
 
 static void coop_flush_client_events(void) {
-    void *host  = *(void **)ADDR_ENET_HOST_PTR;
+    void *host  = *(void **)ADDR_MBNET_HOST_PTR;
     void *slot0 = *(void **)ADDR_NET_PLAYERS_VEC;
     fn_thiscall_void client_send;
 
@@ -545,8 +710,8 @@ static void check_pending_local_result(void) {
     _snprintf(path, sizeof(path), "%s\\%s", g_game_dir, LOCAL_RESULT_FILENAME);
     path[MAX_PATH-1] = 0;
     valid = GetPrivateProfileIntA("Result", "valid", 0, path);
-    coop_log("check_pending: path=%s valid=%d\n", path, valid);
     if (!valid) return;
+    coop_log("check_pending: path=%s valid=%d\n", path, valid);
 
     win_loss  = GetPrivateProfileIntA("Result", "win_loss", 0, path);
     xp        = GetPrivateProfileIntA("Result", "xp_after", 0, path);
@@ -743,6 +908,9 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 
         /* Background thread for s59 */
         CreateThread(NULL, 0, s59_writer_thread, NULL, 0, NULL);
+
+        /* Steam P2P tunnel (no-op unless coop.ini [Steam] sets a role) */
+        steam_tunnel_start(&g_steam_cfg);
 
         /* Hook server browser's frameMove to inject server entry */
         hook_install(ADDR_BROWSER_FRAMEMOVE, browser_framemove_detour,

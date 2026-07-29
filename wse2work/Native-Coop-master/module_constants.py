@@ -1914,12 +1914,28 @@ num_coop_profs  = 7
 
 # Player slot for deferred character save
 slot_player_coop_char_dirty = 62
+# Dirty-category bits stored in slot_player_coop_char_dirty (R5 selective
+# push-back). 0 = clean; any bit set also means a deferred save is owed.
+coop_char_dirty_attrs   = 1
+coop_char_dirty_skills  = 2
+coop_char_dirty_profs   = 4
+coop_char_dirty_points  = 8
+coop_char_dirty_xp      = 16
+coop_char_dirty_gold    = 32
+coop_char_dirty_health  = 64
+coop_char_dirty_renown  = 128
 # Player slot for tracking current trade merchant troop
 slot_player_coop_merchant_troop = 63
 # Player slot for tracking which center the player has locked
 slot_player_coop_locked_center = 64
 # Player slot: 1 = player is in local SP fight/visit, server skips encounter detection
 slot_player_coop_in_local_encounter = 65
+# Player slot: character hydration state (issue #15). coop_save_character
+# refuses to persist any state other than ready -- a half-joined ghost's
+# troop is the raw template and saving it clobbers the real dict.
+slot_player_coop_char_state = 66
+coop_char_state_creation = 1  # no dict found; awaiting char-creation completion
+coop_char_state_ready    = 2  # load-or-creation completed; saves allowed
 
 # trp_temp_troop slots for client-side character data (server-pushed)
 slot_coop_char_xp    = 30

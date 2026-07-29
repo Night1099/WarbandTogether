@@ -18,7 +18,7 @@ cl.exe /nologo /O1 /MD /GS- /W3 /c /D "WIN32" /D "NDEBUG" /I "src" /I "src\share
 if errorlevel 1 goto :error
 
 echo Compiling shared modules...
-cl.exe /nologo /O1 /MD /GS- /W3 /c /D "WIN32" /D "NDEBUG" /I "src" /I "src\shared" /I "enet/include" src\shared\battle_net.c src\shared\hook.c src\shared\crash_report.c src\shared\wsedict.c src\shared\modglobals.c src\shared\warband_addrs_wse2.c
+cl.exe /nologo /O1 /MD /GS- /W3 /c /D "WIN32" /D "NDEBUG" /I "src" /I "src\shared" /I "enet/include" src\shared\battle_net.c src\shared\hook.c src\shared\crash_report.c src\shared\wsedict.c src\shared\modglobals.c src\shared\warband_addrs_wse2.c src\shared\nettune.c
 if errorlevel 1 goto :error
 
 echo Compiling ENet...
@@ -26,7 +26,7 @@ cl.exe /nologo /O1 /MD /GS- /W0 /c /D "WIN32" /D "NDEBUG" /I "enet/include" enet
 if errorlevel 1 goto :error
 
 echo Linking CoopWSEPlugin.dll...
-link.exe /nologo /DLL /MAP:bin\CoopWSEPlugin.map /OUT:bin\CoopWSEPlugin.dll plugin_main.obj coop_campaign.obj battle_net.obj hook.obj crash_report.obj wsedict.obj modglobals.obj warband_addrs_wse2.obj callbacks.obj compress.obj host.obj list.obj packet.obj peer.obj protocol.obj win32.obj kernel32.lib user32.lib ws2_32.lib winmm.lib shell32.lib
+link.exe /nologo /DLL /MAP:bin\CoopWSEPlugin.map /OUT:bin\CoopWSEPlugin.dll plugin_main.obj coop_campaign.obj battle_net.obj hook.obj crash_report.obj wsedict.obj modglobals.obj warband_addrs_wse2.obj nettune.obj callbacks.obj compress.obj host.obj list.obj packet.obj peer.obj protocol.obj win32.obj kernel32.lib user32.lib ws2_32.lib winmm.lib shell32.lib
 if errorlevel 1 goto :error
 
 echo === Build successful: CoopWSEPlugin.dll ===

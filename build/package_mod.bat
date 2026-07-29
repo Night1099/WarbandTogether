@@ -132,17 +132,18 @@ REM The WSE2 zip ships a stock server_config.ini at the root, which is the
 REM path the campaign launch script reads -- overwrite it with ours.
 copy /y "%REPO_ROOT%\deploy\configs\server_config.ini" "%STAGE_DIR%\server_config.ini" >nul || goto :error
 
-REM ---- coop.ini ---------------------------------------------------------
-REM The package ships the CLIENT ini (Mode=client, HostIP of the campaign
-REM server) so a plain extract-over-install works on a player's PC. The
-REM host machine keeps its own coop.ini via build\deploy.bat.
+REM ---- coop.ini.example -------------------------------------------------
+REM Ship the client template as coop.ini.example, NOT coop.ini: the zip is
+REM extracted over existing installs, and a root coop.ini would clobber a
+REM configured one (HostSteamID64, SteamHost, [NetTuning]). First-time
+REM installs rename the example per README_INSTALL.txt.
 
-echo [package_mod] Copying coop.ini (client mode)...
+echo [package_mod] Copying coop.ini.example (client template)...
 if not exist "%REPO_ROOT%\deploy\coop_client.ini" (
     echo MISSING: %REPO_ROOT%\deploy\coop_client.ini
     goto :error
 )
-copy /y "%REPO_ROOT%\deploy\coop_client.ini" "%STAGE_DIR%\coop.ini" >nul || goto :error
+copy /y "%REPO_ROOT%\deploy\coop_client.ini" "%STAGE_DIR%\coop.ini.example" >nul || goto :error
 
 REM ---- Configs ----------------------------------------------------------
 

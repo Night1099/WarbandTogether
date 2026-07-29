@@ -6,7 +6,8 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 
 > **⚠️ Set your expectations:** this is **not a fully playable mod yet**. The
 > core coop loops below work in testing, but do not expect a full campaign
-> playthrough — battle loot/gold and political consequences are missing,
+> playthrough — item loot and the defeat path are still missing (battle
+> gold, renown, prisoners, and political consequences landed in A7/A8),
 > some siege and economy behavior diverges from singleplayer, and longer
 > sessions will hit bugs and desyncs. Grab the current build from the
 > [Releases page](https://github.com/Night1099/WarbandTogether/releases)
@@ -23,10 +24,13 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 - **Native screens in coop** — character, inventory, and trade screens work against server-authoritative state (snapshot-diff sync on screen close)
 - **Local fights** — singleplayer-style battles (including sieges) run locally on the client when no battle server round-trip is needed, with results reported back
 - **Direct Connect** — the client ASI injects the campaign server into the MP browser from `coop.ini`; no LAN required
+- **Steam P2P tunnel** — internet play with **no port forwarding**. The host sets `SteamHost=1`; joiners either click the host's Steam **"Join Game"** button or set `HostSteamID64=`. All coop ports are tunneled over Steam Datagram Relay and surface as a loopback "COOP Direct" row in the MP browser's LAN tab
+- **Server password** — one `[Coop] Password=` protects the whole pool (campaign + every battle server); joiners type it into the MP browser's password box and mirror it in their own `coop.ini` so battle-server hops authenticate automatically
+- **Net tuning** — `[NetTuning]` knobs patched into the dedicated exes at startup: raised AIMD congestion floor/step (~10 s recovery instead of ~97 s) and `PacketMaxSize=1200` to fit Steam's real per-packet budget
 - Terrain-appropriate battle scenes (plain/steppe/snow/desert/forest variants)
 - 5-minute autosave on the campaign server
 
-See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync, inventory sync, party-screen sync), and `docs/BUILD.md` for the build chain.
+See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync, inventory sync, party-screen sync, Steam tunnel), and `docs/BUILD.md` for the build chain.
 
 ## Requirements
 
@@ -47,7 +51,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/
    - `coop_campaign_server.bat` (campaign, port 7240)
    - `coop_battle_server_<n>.bat` (battle slot n = 0–3, ports 7241/7243/7245/7247)
 4. Launch client: WSE2 launcher → NativeCoop → Multiplayer → join the campaign server
-5. **On each client machine, set `HostIP` in `coop.ini` to the server's IP.** The campaign join works without it (LAN browser), but battle joins build their address from `HostIP` — leaving the `127.0.0.1` default makes clicking a battle silently bounce you to the MP menu
+5. **On each client machine, set `HostIP` in `coop.ini` to the server's IP.** The campaign join works without it (LAN browser), but battle joins build their address from `HostIP` — leaving the `127.0.0.1` default makes clicking a battle silently bounce you to the MP menu. Steam-tunnel joiners are the exception: an accepted "Join Game" invite (or a configured `HostSteamID64`) re-aims every coop address at loopback, so `HostIP` is ignored while Steam is running
 
 ## Architecture
 
@@ -68,9 +72,12 @@ Repo layout:
 
 ```
 src/asi/coop.c          — Client ASI: browser injection, engine hooks, auto-connect
+src/asi/steam_tunnel.c  — Steam P2P tunnel: host bridge / joiner proxy / dormant invite standby
+src/asi/steam_flat.c    — Flat-API bindings for steam_api_wse2.dll (Sockets, Utils, Friends, User)
 src/                    — Host plugin: coop_campaign.c / plugin_main.cpp; battle_ipc.h (IPC wire)
 src/shared/             — Shared C: hooks, battle-server ENet IPC, wsedict, module globals,
-                          crash reporting, engine address tables (warband_addrs_wse2.c/h)
+                          nettune.c (dedicated-exe net patches), crash reporting,
+                          engine address tables (warband_addrs_wse2.c/h)
 src/loader/             — winmm.dll proxy that loads the plugin on dedicated servers
 asi_loader/             — dinput8.dll proxy ASI loader (client)
 build/                  — Build scripts; deploy.bat runs after every successful build
@@ -101,9 +108,24 @@ Port=7240
 HostIP=YOURIP
 BattlePort=7241
 Module=NativeCoop
+Password=              ; pool-wide join password, max 47 chars; empty = open
+
+[NetTuning]            ; read by the dedicated exes at startup
+AimdFloor=16000        ; congestion-control floor (stock 3000)
+AimdStep=8000          ; recovery step (stock 1000)
+PacketMaxSize=1200     ; stock 1350 — 1200 fits Steam's measured budget
+SendRateHz=30          ; 30 (stock) or 62
+
+[Steam]                ; read by the client ASI only
+; SteamHost=1          ; on the HOST machine — publishes the "Join Game" button
+; AllowedSteamIDs=     ; host: comma-separated allowlist; EMPTY ACCEPTS ANYONE
+; HostSteamID64=       ; on a JOINER machine — 17 digits; ignored if invited
+; Debug=1              ; verbose GameNetworkingSockets logging
 ```
 
-Set `HostIP` to the campaign server's IP on each client machine (there is no mode key — server role comes from the exe name). The template lives at `deploy/coop.ini`; `build\deploy.bat` installs it into the game directory if missing.
+Set `HostIP` to the campaign server's IP on each client machine (there is no mode key — server role comes from the exe name). Two templates exist: `deploy/coop.ini` is the source-build template that `build\deploy.bat` installs into the game directory if missing, and `deploy/coop_client.ini` is packaged into release zips as `coop.ini.example` (renamed to `coop.ini` on first install so extract-over-install never clobbers a configured one).
+
+`AllowedSteamIDs` is the tunnel's only access control, and an **empty value accepts any SteamID** — if you leave it empty, set a `Password=`.
 
 `HostIP` matters on clients even when the campaign server is found via the LAN browser: the ASI writes it into string register s59, which the module uses to build the battle-server address. A client left on the `127.0.0.1` default joins the campaign fine but bounces to the MP menu on every battle join.
 

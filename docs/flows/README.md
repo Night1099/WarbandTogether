@@ -20,6 +20,7 @@ anchors, invariants) and audits it against native/engine ground truth
 | XP sync (char XP, stack XP, local-fight XP) | `xp-sync.md` | audited |
 | Inventory sync (inv screen, equip pushes) | `inventory-sync.md` | audited |
 | Party screen sync (roster, dismiss, upgrade) | `party-screen-sync.md` | audited |
+| Steam P2P tunnel (internet transport, no port forwarding; + Join Game invites & server password since phase 4) | `steam-tunnel.md` | audited |
 
 ## Engine findings map
 
@@ -33,6 +34,7 @@ documents — see the citation note above).
 | XP sync | `docs/SYNC_REDESIGN.md`, `docs/sync-systems/`, `patches/Warband/findings.md` (kill-XP paths), `patches/WSE2Dedicated/kb.h` |
 | Inventory sync | `docs/RE_NATIVE_SCREENS.md`, `docs/SP_SCREEN_RECREATION.md` |
 | Party screen sync | `docs/RE_NATIVE_SCREENS.md`, `docs/Screen_Session.md` |
+| Steam P2P tunnel | `docs/STEAM_P2P_FACTS.md`, `docs/NETWORKING_AUDIT.md`, `docs/TRAFFIC_OPTIMIZATION.md`, `patches/Warband_WSE2/findings.md` ("SteamAPI_RunCallbacks pump audit", "Loopback join classification", "Phase 4 invites+password RE" Q5–Q11) |
 
 RE symbol knowledge lives in `patches/<project>/kb.h`; narratives in
 `patches/<project>/findings*.md`. Dossiers link into those files — they are
@@ -44,11 +46,11 @@ audit: `patches/Warband/findings.md` ("Native kill-vs-wound (surgery) rules",
 
 ## Consolidated fix list
 
-Every `DIVERGES` verdict across the five dossiers, ranked by player impact.
+Every `DIVERGES` verdict across the six dossiers, ranked by player impact.
 "Src" points to the dossier fix-list row for full context.
 
 **Status:** A1–A5 and B1 are **implemented** in commit `50f4ac1` (full
-27-step module build green) and marked ✅ below. **B1 is runtime-verified
+29-step module build green) and marked ✅ below. **B1 is runtime-verified
 (2026-07-10)** — legit edits stick, no false `[INV GUARD]` rejects; its
 dossier verdict is flipped to OK. Runtime testing of B1 also exposed and
 fixed a join-push-ordering bug (char sync must precede inventory — see
@@ -87,7 +89,7 @@ symptom of A7 (post-dedicated-battle stuck player — see the A7 row).
 | # | Flow (src) | What's wrong | Owner |
 |---|------------|--------------|-------|
 | C1 | battle-pipeline (7) | ch125 ev 14 `return_to_campaign` — defined, documented, never sent/handled | `header_common.py` + project-state |
-| C2 | battle-pipeline (8) | ASI writes `s57` reconnect address; nothing consumes it and vanilla formatting clobbers the register | `src/asi/coop.c` + `module_simple_triggers.py` |
+| C2 | battle-pipeline (8) | ~~ASI writes `s57` reconnect address; nothing consumes it~~ Resolved by repurpose: phase 4 made `s57` the **join-password mirror** (`src/asi/coop.c:196`, rewritten every 500 ms, 47-char clamp) and `module_simple_triggers.py:88` consumes it as the deferred battle-connect password arg. The register is NOT private — native scratch writers exist and can clobber it between mirror ticks; tracked in `docs/DEFERRED.md` | `src/asi/coop.c:196` + `module_simple_triggers.py:88` |
 | C3 | battle-pipeline (9) | Legacy `coop_battle.c` orchestration (WSELoaderServer + `battle_result.txt`) installed for HOST/CLIENT but superseded by ENet IPC | `src/coop_battle.c` + `src/coop_campaign.c` |
 | C4 | siege (7) | Battle types 3–6 (defend siege, village raids, bandit lair) defined + loader-handled but never launched | `module_constants.py` + `module_coop_scripts.py` |
 | C5 | xp-sync (5) | ch125 ev 22 pushes `num_upgradeable`, not XP — misnamed constant + wrong project-state row | `header_common.py` + project-state |
