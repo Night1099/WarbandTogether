@@ -196,7 +196,7 @@ yet, or not finished; treat it as a preview that may not work.
 - **Public roadmap.** `ROADMAP.md` and `roadmap.json` at the root of this
   repo list every singleplayer feature, which milestone it belongs to,
   and whether it works in coop yet. A block view of the same data lives
-  at https://github.com/Night1099/warband-together-site.
+  at https://warbandtogether.dev.
 
 ## Future release
 

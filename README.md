@@ -15,6 +15,9 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 
 **Just want to play?** Follow the step-by-step [install guide](docs/INSTALL.md).
 
+**Roadmap:** what works in coop so far, feature by feature, at
+[warbandtogether.dev](https://warbandtogether.dev) (also [ROADMAP.md](ROADMAP.md)).
+
 **Working:**
 - WSE2 campaign server (dedicated, port 7240) with multiple players on the shared campaign map
 - **Battle server pool** — up to 4 dedicated battle servers (ports 7241/7243/7245/7247, one per slot), allocated per encounter; the pool auto-adapts to however many slots are running
