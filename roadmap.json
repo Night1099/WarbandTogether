@@ -1,0 +1,1418 @@
+{
+  "features": [
+    {
+      "group": "Meta",
+      "id": "achievements",
+      "milestone": "full_parity",
+      "name": "Achievements",
+      "note": "Steam achievements are not unlocked in the coop campaign.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Towns",
+      "id": "arena",
+      "milestone": "adventurer",
+      "name": "Arena",
+      "note": "The arena is not available yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Stability",
+      "id": "backlog_send_pacing",
+      "milestone": "adventurer",
+      "name": "Catch-up speed for a lagging player",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "bandit_lairs",
+      "milestone": "adventurer",
+      "name": "Bandit lairs",
+      "note": "Bandit hideouts never appear on the map, so they can't be found or attacked.",
+      "status": "Planned"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "bandits",
+      "milestone": "adventurer",
+      "name": "Bandits, deserters and manhunters on the map",
+      "note": "Deserter bands don't grow with your level, and bandits don't go after richer players more than poorer ones.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "banners",
+      "milestone": "lord",
+      "name": "Banners",
+      "note": "Your multiplayer banner does not show on your party yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "battle_auto_resolve",
+      "milestone": "adventurer",
+      "name": "Sending your troops in without you",
+      "note": "You cannot order your troops to fight a battle without you.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_auto_return",
+      "milestone": "adventurer",
+      "name": "Returning to the campaign after a battle",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_chooser_empty_state",
+      "milestone": "adventurer",
+      "name": "Battle chooser when no battle is open",
+      "note": "Pressing B when no battle is running does nothing instead of saying so.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_end_admin_check",
+      "milestone": "adventurer",
+      "name": "Only an admin can end a battle",
+      "note": "Any player in a battle can end it early through a hidden request; only the host should be able to.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_inventory_before_spawn",
+      "milestone": "adventurer",
+      "name": "Changing equipment before spawning in a battle",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_menus",
+      "milestone": "adventurer",
+      "name": "In-battle menus (Esc menu, game rules, troop choice, admin panel)",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_pool",
+      "milestone": "adventurer",
+      "name": "Battle servers and the battle chooser",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "battle_relation_gains",
+      "milestone": "adventurer",
+      "name": "Relation gains from battles",
+      "note": "Helping a lord win a battle does not improve your relation with him yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_retreat_fallback",
+      "milestone": "adventurer",
+      "name": "Retreat when the battle's leader disconnects",
+      "note": "If the player who started a battle disconnects, the others cannot retreat and must fight it out.",
+      "status": "Planned"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "battle_statistics",
+      "milestone": "full_parity",
+      "name": "Kill statistics",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Character & party",
+      "id": "books",
+      "milestone": "adventurer",
+      "name": "Reading books",
+      "note": "You can buy books but cannot read them yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "bookseller",
+      "milestone": "adventurer",
+      "name": "Bookseller",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "camp_and_waiting",
+      "milestone": "adventurer",
+      "name": "Camping, waiting and resting",
+      "note": "You can't set up camp or wait in the field. You can wait inside a town, but resting there has no cost or effects yet. Time runs at one speed for everyone.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Meta",
+      "id": "campaign_pause",
+      "milestone": "full_parity",
+      "name": "Pausing the campaign (host)",
+      "note": "The host's pause command does not actually pause the campaign.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Stability",
+      "id": "campaign_walk_limit_patch",
+      "milestone": "adventurer",
+      "name": "Server path-finding patch check",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Combat",
+      "id": "captivity",
+      "milestone": "adventurer",
+      "name": "Defeat, captivity and escape",
+      "note": "Losing a battle never makes you a prisoner; you escape at once.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "castle_visits",
+      "milestone": "adventurer",
+      "name": "Castle visits",
+      "note": "Town and castle gates have no guards or meeting requests yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Villages",
+      "id": "cattle",
+      "milestone": "adventurer",
+      "name": "Cattle herds",
+      "note": "Cattle herds you own cannot be driven, stopped or slaughtered yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Villages",
+      "id": "cattle_purchase",
+      "milestone": "adventurer",
+      "name": "Buying cattle from the elder",
+      "note": "Buying cattle from a village elder does not work yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "center_reports",
+      "milestone": "full_parity",
+      "name": "Center reports (cheat)",
+      "note": "Cheat-only report pages are not part of coop.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Stability",
+      "id": "ch125_char_data_dead_arm",
+      "milestone": "full_parity",
+      "name": "Internal cleanup: unused start-location message",
+      "note": "Internal cleanup: an unused network message is still defined.",
+      "status": "Planned"
+    },
+    {
+      "group": "Stability",
+      "id": "ch128_string_events",
+      "milestone": "adventurer",
+      "name": "Battle names pushed to players (faction, troop classes, heroes)",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Character & party",
+      "id": "character_creation",
+      "milestone": "adventurer",
+      "name": "Character creation",
+      "note": "Character creation applies your background's stats, but not its starting gold, renown or honor, and you cannot pick a starting town yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Meta",
+      "id": "character_persistence",
+      "milestone": "full_parity",
+      "name": "Character saving (per player)",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Character & party",
+      "id": "character_screen",
+      "milestone": "adventurer",
+      "name": "Levels, attributes and skills",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Meta",
+      "id": "cheats",
+      "milestone": "full_parity",
+      "name": "Cheats and debug menus",
+      "note": "Native cheats are not available in coop; hosts have a separate debug mode.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "claimants",
+      "milestone": "sovereign",
+      "name": "Claimants",
+      "note": "Claimants to the thrones cannot be found or supported yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Stability",
+      "id": "clean_machine_build",
+      "milestone": "adventurer",
+      "name": "Public build on a clean machine",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Character & party",
+      "id": "companion_gear_and_stats",
+      "milestone": "adventurer",
+      "name": "Companion equipment and skill points",
+      "note": "Items you hand to a companion can be lost; don't give companions equipment yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "companion_missions",
+      "milestone": "lord",
+      "name": "Companion missions",
+      "note": "Companions cannot be sent on missions yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "companion_morale",
+      "milestone": "adventurer",
+      "name": "Companion complaints and departures",
+      "note": "Companions never complain, quarrel or leave the party.",
+      "status": "Planned"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "companion_talk",
+      "milestone": "adventurer",
+      "name": "Talking to companions in your party",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "companions",
+      "milestone": "adventurer",
+      "name": "Companions",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Stability",
+      "id": "connection_stability",
+      "milestone": "adventurer",
+      "name": "Connection stability",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Coop features",
+      "id": "coop_ip_menu",
+      "milestone": "adventurer",
+      "name": "In-game server address menu",
+      "note": "Join through the server browser or a Steam invite.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "courtship",
+      "milestone": "lord",
+      "name": "Courtship and marriage",
+      "note": "You can talk to ladies, but courting and marriage progress is not saved yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Meta",
+      "id": "custom_battles",
+      "milestone": "full_parity",
+      "name": "Custom and quick battles",
+      "note": "Custom battles are a single-player mode and are not part of the coop campaign.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Stability",
+      "id": "dead_code_cleanup",
+      "milestone": "full_parity",
+      "name": "Internal code cleanup",
+      "note": "Internal cleanup, no effect on play.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "debug_launcher",
+      "milestone": "adventurer",
+      "name": "Debug launcher (map reveal, teleport)",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Stability",
+      "id": "dedicated_ghidra_project_stale",
+      "milestone": "full_parity",
+      "name": "Developer analysis tools kept current",
+      "note": "Internal tooling fix, no player-visible effect.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Stability",
+      "id": "dev_tooling",
+      "milestone": "full_parity",
+      "name": "Developer build and test tools",
+      "note": "Internal developer tooling, no effect on play.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "diplomacy",
+      "milestone": "mercenary_vassal",
+      "name": "Wars, peace and lord politics",
+      "note": "Wars and peace run for the whole world, but lords held in castle prisons never escape yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Coop features",
+      "id": "direct_connect",
+      "milestone": "adventurer",
+      "name": "Direct connect",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "encounter_retreat_surrender",
+      "milestone": "adventurer",
+      "name": "Retreating, surrendering and sending troops in without you",
+      "note": "When an enemy attacks you on the map you can simply leave; there is no retreat with a rearguard, no surrender, and no sending your troops in without you.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "enemy_center_access",
+      "milestone": "adventurer",
+      "name": "Enemy towns and castles turn players away",
+      "note": "Enemy towns and castles do not turn players away yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Combat",
+      "id": "enemy_lord_capture",
+      "milestone": "adventurer",
+      "name": "Capturing or releasing a beaten lord",
+      "note": "Beaten lords are captured or escape automatically; you cannot choose to let them go.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Towns",
+      "id": "enterprises",
+      "milestone": "lord",
+      "name": "Enterprises",
+      "note": "Enterprises are not available yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "faction_membership",
+      "milestone": "mercenary_vassal",
+      "name": "Serving a kingdom (per-player faction)",
+      "note": "Players cannot join a kingdom yet; everyone plays as an independent.",
+      "status": "Planned"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "faction_relations_report",
+      "milestone": "full_parity",
+      "name": "Faction relations report",
+      "note": "The faction relations report shows outdated relations.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "feasts",
+      "milestone": "lord",
+      "name": "Feasts",
+      "note": "Feasts are not available yet: you are never invited and cannot host one.",
+      "status": "Planned"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "fiefs",
+      "milestone": "lord",
+      "name": "Fiefs and their management",
+      "note": "Captured castles and towns go to the players as a group; nobody can own or manage a fief yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "field_battles",
+      "milestone": "adventurer",
+      "name": "Field battles",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Character & party",
+      "id": "food",
+      "milestone": "adventurer",
+      "name": "Food and supplies",
+      "note": "Your party does not eat food yet, and food never spoils.",
+      "status": "Planned"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "game_log",
+      "milestone": "full_parity",
+      "name": "Game log",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Towns",
+      "id": "greetings",
+      "milestone": "adventurer",
+      "name": "Greetings from townsfolk, guards and soldiers",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Towns",
+      "id": "guild_master",
+      "milestone": "adventurer",
+      "name": "Guild master",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "honor",
+      "milestone": "adventurer",
+      "name": "Honor",
+      "note": "Honor is not kept yet: gains and losses are forgotten and lords do not take it into account.",
+      "status": "Planned"
+    },
+    {
+      "group": "Stability",
+      "id": "hook_bookkeeping_refactor",
+      "milestone": "full_parity",
+      "name": "Internal engine-hook cleanup",
+      "note": "Internal code cleanup, no player-visible effect.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "hosting",
+      "milestone": "adventurer",
+      "name": "Hosting and the server password",
+      "note": "On a passworded server, players must also put the password in their own coop.ini or they cannot join battles.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Character & party",
+      "id": "inventory",
+      "milestone": "adventurer",
+      "name": "Inventory and equipment",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Combat",
+      "id": "join_ongoing_battles",
+      "milestone": "adventurer",
+      "name": "Joining a battle already under way",
+      "note": "You cannot join a battle that two other armies are already fighting.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "joining",
+      "milestone": "adventurer",
+      "name": "Joining and rejoining the campaign",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Towns",
+      "id": "joint_tournaments",
+      "milestone": "full_parity",
+      "name": "Tournaments with several players",
+      "note": "Players cannot yet compete in the same tournament.",
+      "status": "Planned"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "living_world",
+      "milestone": "adventurer",
+      "name": "The world moves on: lords, caravans, prosperity",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Coop features",
+      "id": "local_fight_autojoin",
+      "milestone": "adventurer",
+      "name": "Joining a server battle right after a local fight",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Combat",
+      "id": "local_siege_casualty_leak",
+      "milestone": "mercenary_vassal",
+      "name": "Garrison losses counted as yours after a local siege",
+      "note": "After a siege you lead yourself, you can lose troops of the same type as the defenders.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Combat",
+      "id": "local_siege_defenders",
+      "milestone": "mercenary_vassal",
+      "name": "Lords defending a castle in a local siege",
+      "note": "In a siege you lead yourself, lords stationed in the castle do not take part in the defense.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "loot",
+      "milestone": "adventurer",
+      "name": "Battle loot",
+      "note": "Winning a battle gives no item loot yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "lord_ai_per_player",
+      "milestone": "mercenary_vassal",
+      "name": "Lords reacting to each player",
+      "note": "Lords do not yet act on how much they like you: they will not ride to your aid or invite you to feasts.",
+      "status": "Planned"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "lord_conversations",
+      "milestone": "adventurer",
+      "name": "Talking to lords",
+      "note": "You can talk to lords in their halls, but not when you meet them on the map, and some conversation outcomes such as selling a prisoner do not stick yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "lord_relations_report",
+      "milestone": "full_parity",
+      "name": "Lord relations report",
+      "note": "The lord relations list can be slightly off: your honor is not taken into account correctly and lords who changed status may be missing.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Towns",
+      "id": "lords_hall",
+      "milestone": "adventurer",
+      "name": "Lord's hall",
+      "note": "Every lady staying in a town or castle shows up in its hall, even those who would not receive you.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "map_context_menu",
+      "milestone": "full_parity",
+      "name": "Map right-click menu",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "map_conversations",
+      "milestone": "adventurer",
+      "name": "Talking to parties on the map",
+      "note": "You can't talk to parties you meet on the map: no bargaining with bandits, no demanding surrender, no chatting with lords, caravans or farmers.",
+      "status": "Planned"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "map_encounters",
+      "milestone": "adventurer",
+      "name": "Map encounters",
+      "note": "Every party you meet on the map is treated as hostile for now.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "map_party_icon",
+      "milestone": "full_parity",
+      "name": "Party icon on the map (rider, camp)",
+      "note": "Your party always shows the walking icon on the map, even when you ride.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "map_spawn_picker",
+      "milestone": "adventurer",
+      "name": "Choosing where to start on the map",
+      "note": "New characters cannot choose where they start on the map.",
+      "status": "Planned"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "map_texts",
+      "milestone": "full_parity",
+      "name": "Date and money texts",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "map_travel",
+      "milestone": "adventurer",
+      "name": "Map travel",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Towns",
+      "id": "marketplace",
+      "milestone": "adventurer",
+      "name": "Marketplace and merchants",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "marshal_campaigns",
+      "milestone": "mercenary_vassal",
+      "name": "Marshals and kingdom campaigns",
+      "note": "Kingdom campaigns run without you: marshals never call on players yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "mercenary_contracts",
+      "milestone": "mercenary_vassal",
+      "name": "Mercenary contracts",
+      "note": "Lords offer mercenary contracts, but accepting one has no lasting effect yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Stability",
+      "id": "missing_party_respawn",
+      "milestone": "adventurer",
+      "name": "Map parties a player missed on join reappear",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Character & party",
+      "id": "morale_desertion",
+      "milestone": "adventurer",
+      "name": "Low-morale desertion",
+      "note": "Troops never desert when your party's morale is low.",
+      "status": "Planned"
+    },
+    {
+      "group": "Coop features",
+      "id": "multi_battle_concurrency",
+      "milestone": "adventurer",
+      "name": "Several battles at once",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Out of scope",
+      "id": "native_multiplayer",
+      "milestone": null,
+      "name": "Native multiplayer modes",
+      "note": "Native Warband's multiplayer modes are not part of the coop campaign.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Stability",
+      "id": "net_tuning",
+      "milestone": "adventurer",
+      "name": "Network tuning (bandwidth floor, packet size)",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "notes",
+      "milestone": "full_parity",
+      "name": "Notes and encyclopedia",
+      "note": "The Notes screen shows outdated or empty information about lords, towns and kingdoms.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "notes_info_pages",
+      "milestone": "full_parity",
+      "name": "Game concepts pages",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Meta",
+      "id": "options",
+      "milestone": "full_parity",
+      "name": "Options and controls",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Character & party",
+      "id": "party_morale",
+      "milestone": "adventurer",
+      "name": "Party morale",
+      "note": "Party morale does not change yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "party_troops",
+      "milestone": "adventurer",
+      "name": "Party and troop upgrades",
+      "note": "Recruiting and upgrading work, but party size is not limited by leadership yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Character & party",
+      "id": "permanent_injuries",
+      "milestone": "adventurer",
+      "name": "Permanent injuries after defeat",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "player_kingdom",
+      "milestone": "sovereign",
+      "name": "The player's kingdom",
+      "note": "Founding and ruling your own kingdom is not available yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "prison",
+      "milestone": "lord",
+      "name": "Town prison",
+      "note": "Town and castle prisons cannot be visited yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "prisoner_ransom_offers",
+      "milestone": "adventurer",
+      "name": "Ransom offers for captured lords",
+      "note": "Factions never offer ransom for lords you hold.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "prisoner_recruiting",
+      "milestone": "adventurer",
+      "name": "Recruiting prisoners",
+      "note": "You cannot recruit your prisoners yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "prisoner_selling",
+      "milestone": "adventurer",
+      "name": "Selling prisoners to ransom brokers",
+      "note": "Prisoners cannot be sold to ransom brokers yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "prisoners",
+      "milestone": "adventurer",
+      "name": "Taking and keeping prisoners",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Coop features",
+      "id": "pvp_battles",
+      "milestone": "mercenary_vassal",
+      "name": "Battles between players of enemy kingdoms",
+      "note": "Players on opposite sides of a war cannot fight each other yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_deal_with_looters",
+      "milestone": "adventurer",
+      "name": "Guild master: deal with looters",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_deal_with_night_bandits",
+      "milestone": "adventurer",
+      "name": "Guild master: deal with night bandits",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_deliver_grain",
+      "milestone": "adventurer",
+      "name": "Village elder: deliver grain",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_deliver_wine",
+      "milestone": "adventurer",
+      "name": "Guild master: deliver wine",
+      "note": "Wine delivery works, but the quest title shows the wrong amount and names.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_eliminate_bandits_infesting_village",
+      "milestone": "adventurer",
+      "name": "Save a village from bandits (tavern farmer's plea)",
+      "note": "A farmer in the tavern can give you a quest to save his village, but it can't be completed yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_escort_merchant_caravan",
+      "milestone": "adventurer",
+      "name": "Guild master: escort a merchant caravan",
+      "note": "Escorting a caravan works, but you can't talk to the caravan on the map to make it wait or follow.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_guild_debt",
+      "milestone": "adventurer",
+      "name": "Failed guild master quests: debts and penalties",
+      "note": "Failing a guild master's quest has no penalty yet: no debt to the guild.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_kidnapped_girl",
+      "milestone": "adventurer",
+      "name": "Guild master: ransom a kidnapped girl",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_log",
+      "milestone": "adventurer",
+      "name": "Quest log and quest timers",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_move_cattle_herd",
+      "milestone": "adventurer",
+      "name": "Guild master: move a cattle herd",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_persuade_lords_to_make_peace",
+      "milestone": "adventurer",
+      "name": "Guild master: persuade two lords to make peace",
+      "note": "Persuading lords to make peace is in, but untested, and turning down the reward gives no honour.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Quests",
+      "id": "quest_troublesome_bandits",
+      "milestone": "adventurer",
+      "name": "Guild master: hunt down troublesome bandits",
+      "note": "Hunting troublesome bandits counts as done even if someone else kills them.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Quests",
+      "id": "quests_elder",
+      "milestone": "adventurer",
+      "name": "Village elder quests: deliver cattle, train peasants",
+      "note": "Village elders only ask for grain; the cattle and peasant-training quests aren't in yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quests_guild_bounties",
+      "milestone": "adventurer",
+      "name": "Guild master bounties: track down bandits, retaliate for a border incident",
+      "note": "Guild masters don't offer bandit bounties or border-retaliation jobs yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quests_intro",
+      "milestone": "adventurer",
+      "name": "The merchant's brother (opening quest)",
+      "note": "The opening quest with the merchant's brother isn't in coop; new characters start directly on the map.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quests_kingdom",
+      "milestone": "mercenary_vassal",
+      "name": "Army and kingdom quests",
+      "note": "Army and kingdom quests aren't in yet; they need joining a kingdom first.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quests_lord",
+      "milestone": "mercenary_vassal",
+      "name": "Lord quests",
+      "note": "Lords don't give quests yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Quests",
+      "id": "quests_mayor",
+      "milestone": "adventurer",
+      "name": "Guild master quests",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Villages",
+      "id": "recruiting",
+      "milestone": "adventurer",
+      "name": "Recruiting volunteers",
+      "note": "Recruiting volunteers works from the village menu, but prices and who may recruit differ from single player, and asking the elder does nothing yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "relations_renown",
+      "milestone": "adventurer",
+      "name": "Relations and renown",
+      "note": "Relations and renown are kept per player, but renown never slowly fades the way it does in single player.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "reports",
+      "milestone": "full_parity",
+      "name": "Reports",
+      "note": "The Reports menu shows placeholder values instead of your own renown, honor, party size, morale and companions.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Meta",
+      "id": "retirement",
+      "milestone": "full_parity",
+      "name": "Retirement and game end",
+      "note": "Retirement is not part of coop; your character stays saved on the server.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Meta",
+      "id": "save_load",
+      "milestone": "full_parity",
+      "name": "Saving and loading",
+      "note": "The shared world is only saved when the host saves it from the server console; characters save on their own.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "sea_travel",
+      "milestone": "full_parity",
+      "name": "Sea travel",
+      "note": "Sea travel is a cheat-only option in native Warband and is not part of coop.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Stability",
+      "id": "server_performance",
+      "milestone": "adventurer",
+      "name": "Server performance",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Stability",
+      "id": "server_trigger_clock",
+      "milestone": "adventurer",
+      "name": "Timed server jobs run on schedule (autosave, quest tick)",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Towns",
+      "id": "shared_visits",
+      "milestone": "full_parity",
+      "name": "Visiting a town together",
+      "note": "Only one player can visit a town at a time for now; visiting together is planned for the end of the roadmap.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "siege_camp",
+      "milestone": "mercenary_vassal",
+      "name": "Besieging: siege camp, ladders, towers and parley",
+      "note": "Sieges start straight away: there is no siege camp, no ladders or towers to build and no talks with the defenders.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "siege_conquest_claim",
+      "milestone": "mercenary_vassal",
+      "name": "Claiming a conquered castle or town",
+      "note": "Captured castles and towns go to a shared player faction; you cannot claim them for yourself yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "siege_defense",
+      "milestone": "mercenary_vassal",
+      "name": "Defending a besieged castle or town",
+      "note": "You cannot help defend a castle or town under siege.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "sieges",
+      "milestone": "mercenary_vassal",
+      "name": "Assaulting a castle or town",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Towns",
+      "id": "sneaking",
+      "milestone": "mercenary_vassal",
+      "name": "Sneaking into enemy towns",
+      "note": "Sneaking into enemy towns is not available yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "special_places",
+      "milestone": "full_parity",
+      "name": "Zendar, the inn, the salt mine and Dhorak Keep",
+      "note": "Places that native Warband never shows on the map are not part of coop.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Travel & world map",
+      "id": "spotting",
+      "milestone": "adventurer",
+      "name": "Spotting parties and tracks",
+      "note": "Parties are spotted normally, but tracks on the map do not show yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Lords, ladies & companions",
+      "id": "starter_companion_collision",
+      "milestone": "adventurer",
+      "name": "Starting companion shared between players",
+      "note": "Two players can end up with the same starting companion.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Character & party",
+      "id": "starting_kit",
+      "milestone": "adventurer",
+      "name": "Starting gold, troops and gear",
+      "note": "New characters start with a large test army and extra gold, and their background's starting equipment is replaced by a default kit.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Coop features",
+      "id": "steam_char_fork",
+      "milestone": "adventurer",
+      "name": "A Steam player's character forked under the username",
+      "note": "Rarely, a Steam player can join with a fresh character instead of their own when Steam is slow to report in.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Coop features",
+      "id": "steam_identity_check",
+      "milestone": "adventurer",
+      "name": "Checking a player's Steam identity",
+      "note": "Steam ids are not verified by the host; protect your server with a password.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Coop features",
+      "id": "steam_invites",
+      "milestone": "adventurer",
+      "name": "Steam invites and the Steam tunnel",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Coop features",
+      "id": "steam_missing_warning",
+      "milestone": "adventurer",
+      "name": "Warning when Steam is not running",
+      "note": "",
+      "status": "In testing"
+    },
+    {
+      "group": "Coop features",
+      "id": "steam_tunnel_host_crash",
+      "milestone": "adventurer",
+      "name": "Host tunnel crash when joiners connect early",
+      "note": "If friends connect before the host is fully up, the host's Steam connection can drop and restart; start the host first.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Coop features",
+      "id": "steam_tunnel_recovery",
+      "milestone": "adventurer",
+      "name": "Recovering the Steam tunnel",
+      "note": "When the host is offline or Steam restarts, the connection gives up or recovers without telling the player what happened.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Towns",
+      "id": "tavern",
+      "milestone": "adventurer",
+      "name": "Tavern and mercenaries",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Towns",
+      "id": "tavern_brawls",
+      "milestone": "adventurer",
+      "name": "Tavern brawls and duels",
+      "note": "Tavern brawls and assassins do not fight yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "tavern_buy_round",
+      "milestone": "adventurer",
+      "name": "Buying the tavern a round",
+      "note": "Buying a round for the tavern does not charge you properly yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Towns",
+      "id": "tavern_ransom_broker",
+      "milestone": "adventurer",
+      "name": "Ransom broker",
+      "note": "Ransoming a captured companion is built and waiting for a test; selling prisoners to the broker comes with prisoner selling.",
+      "status": "In testing"
+    },
+    {
+      "group": "Towns",
+      "id": "tavern_travellers",
+      "milestone": "adventurer",
+      "name": "Paying travellers for news",
+      "note": "Travellers in taverns cannot be paid for news yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Towns",
+      "id": "tournaments",
+      "milestone": "adventurer",
+      "name": "Tournaments",
+      "note": "Tournaments cannot be entered yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "town_fights",
+      "milestone": "adventurer",
+      "name": "Street fights and night bandits",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Towns",
+      "id": "town_visits",
+      "milestone": "adventurer",
+      "name": "Town menu and streets",
+      "note": "",
+      "status": "Works"
+    },
+    {
+      "group": "Towns",
+      "id": "townsfolk_charity",
+      "milestone": "adventurer",
+      "name": "Giving money to the poor in town",
+      "note": "Giving money to the poor in town does not work correctly yet.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Towns",
+      "id": "trade_assessment",
+      "milestone": "adventurer",
+      "name": "Assessing local prices",
+      "note": "You cannot yet assess a town's prices from the marketplace.",
+      "status": "Planned"
+    },
+    {
+      "group": "Towns",
+      "id": "trade_server_pricing",
+      "milestone": "adventurer",
+      "name": "Server-checked trade prices",
+      "note": "The server does not yet check what you paid when trading with a merchant.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Towns",
+      "id": "training_ground",
+      "milestone": "adventurer",
+      "name": "Training grounds",
+      "note": "Training grounds are not available yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Meta",
+      "id": "tutorial",
+      "milestone": "full_parity",
+      "name": "Tutorial",
+      "note": "The tutorial is single-player only; learn the basics there before joining a coop campaign.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Meta",
+      "id": "unused_native",
+      "milestone": "full_parity",
+      "name": "Unused native content",
+      "note": "Leftover content that native Warband never uses is not part of coop.",
+      "status": "Not in coop"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "vassal_politics",
+      "milestone": "lord",
+      "name": "Politics as a vassal (favours, prisoners for the liege, truces)",
+      "note": "",
+      "status": "Not yet assessed"
+    },
+    {
+      "group": "Politics & kingdoms",
+      "id": "vassalage",
+      "milestone": "mercenary_vassal",
+      "name": "Swearing fealty",
+      "note": "You can swear an oath to a king, but it is forgotten when you leave the hall.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Villages",
+      "id": "village_bandits",
+      "milestone": "adventurer",
+      "name": "Bandits infesting villages",
+      "note": "Villages overrun by bandits cannot be freed yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
+      "id": "village_raids",
+      "milestone": "mercenary_vassal",
+      "name": "Raiding villages",
+      "note": "You cannot raid villages yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Villages",
+      "id": "village_trade",
+      "milestone": "adventurer",
+      "name": "Buying from villages",
+      "note": "Village trade works, but the server does not yet check the prices the game reports, and a looted or bandit-held village still sells.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Villages",
+      "id": "village_visits",
+      "milestone": "adventurer",
+      "name": "Village menu and elder",
+      "note": "Villages can be visited and the elder talked to, but a looted or bandit-held village is not closed off yet.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Character & party",
+      "id": "wages_morale",
+      "milestone": "adventurer",
+      "name": "Weekly wages",
+      "note": "Troops do not cost weekly wages yet.",
+      "status": "Planned"
+    },
+    {
+      "group": "Reports & screens",
+      "id": "world_event_notifications",
+      "milestone": "mercenary_vassal",
+      "name": "News of wars, peace, sieges and raids",
+      "note": "You are not told about world events such as wars, sieges and raids.",
+      "status": "Planned"
+    },
+    {
+      "group": "Character & party",
+      "id": "wound_healing",
+      "milestone": "adventurer",
+      "name": "Healing over time",
+      "note": "Wounds heal over time, but resting does not speed it up yet and lame horses stay lame.",
+      "status": "Partly works"
+    },
+    {
+      "group": "Character & party",
+      "id": "wounds",
+      "milestone": "adventurer",
+      "name": "Wounded troops and surgery",
+      "note": "",
+      "status": "Works"
+    }
+  ],
+  "milestones": [
+    {
+      "done": 23,
+      "id": "adventurer",
+      "name": "Adventurer",
+      "summary": "Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, use taverns, the arena and tournaments, hire companions, do village work and early quests.",
+      "total": 113
+    },
+    {
+      "done": 1,
+      "id": "mercenary_vassal",
+      "name": "Mercenary & vassal",
+      "summary": "Take contracts, follow marshal campaigns, swear fealty, receive a fief, do kingdom quests.",
+      "total": 18
+    },
+    {
+      "done": 0,
+      "id": "lord",
+      "name": "Lord",
+      "summary": "Run fiefs and enterprises, court and marry, attend feasts, deal with lord politics.",
+      "total": 8
+    },
+    {
+      "done": 0,
+      "id": "sovereign",
+      "name": "Sovereign",
+      "summary": "Found a kingdom, back a claimant, recruit lords, run the realm.",
+      "total": 2
+    },
+    {
+      "done": 10,
+      "id": "full_parity",
+      "name": "Full parity",
+      "summary": "Everything left, including meta and reports.",
+      "total": 30
+    }
+  ],
+  "schema_version": 1
+}

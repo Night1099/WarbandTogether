@@ -53,3 +53,6 @@ mst_multiplayer_duel = 51
 mst_coop_local_battle = 52
 mst_coop_battle = 53
 mst_coop_siege = 54
+mst_coop_visit_hall = 55
+mst_coop_visit_tavern = 56
+mst_coop_bandits_at_night = 57

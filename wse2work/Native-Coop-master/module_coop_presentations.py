@@ -1091,158 +1091,6 @@ coop_presentations = [
 
 
 ######################################################
-  ("coop_troop_select", prsntf_manual_end_only, 0, [
-    (ti_on_presentation_load,
-     [(set_fixed_point_multiplier, 1000),
-      (create_mesh_overlay, reg0, "mesh_mp_ingame_menu"),
-      (position_set_x, pos1, 250),
-      (position_set_y, pos1, 80),
-      (overlay_set_position, reg0, pos1),
-      (position_set_x, pos1, 1000),
-      (position_set_y, pos1, 1000),
-      (overlay_set_size, reg0, pos1),
-
-      (str_clear, s0),
-      (create_text_overlay, "$g_presentation_obj_troop_select_container", s0, tf_scrollable_style_2),
-      (position_set_x, pos1, 285),
-      (position_set_y, pos1, 125),
-      (overlay_set_position, "$g_presentation_obj_troop_select_container", pos1),
-      (position_set_x, pos1, 405),
-      (position_set_y, pos1, 500),#500
-      (overlay_set_area_size, "$g_presentation_obj_troop_select_container", pos1),
-      (set_container_overlay, "$g_presentation_obj_troop_select_container"),
-
-###############
-      (multiplayer_get_my_team, ":my_team_no"),
-      (assign, ":hero_party", 0),
-      (try_begin),
-        (eq, ":my_team_no", 0),
-        (assign, ":hero_party", coop_temp_party_enemy_heroes),
-      (else_try),
-        (eq, ":my_team_no", 1),
-        (assign, ":hero_party", coop_temp_party_ally_heroes),
-      (try_end),
-
-      (party_get_num_companion_stacks, ":num_heroes", ":hero_party"),
-
-      (assign, ":total_y",  ":num_heroes"),
-      (val_add, ":total_y", "$g_multiplayer_player_respawn_as_bot"), #NEW 0, 1 if respawn as bot
-
-      (val_mul, ":total_y", escape_menu_item_height),
-      (assign, ":cur_y",  ":total_y"), #450
-
-      (create_text_overlay, reg0, "str_choose_a_troop", 0),
-      (overlay_set_color, reg0, 0xFFFFFF),
-      (position_set_x, pos1, 0),
-      (position_set_y, pos1, ":cur_y"),
-      (overlay_set_position, reg0, pos1),
-
-      (position_set_x, pos1, 100),
- 
-      (try_for_range, ":stack", 0, ":num_heroes"),
- 
-        (party_stack_get_troop_id, ":script_param_1", ":hero_party", ":stack"),	
-
-        (assign, ":break", 0),
-        (get_max_players, ":num_players"),
-        (try_for_range, ":all_player_no", 0, ":num_players"), #if troop is picked but not spawned
-          (player_is_active, ":all_player_no"),
-          (player_get_slot, ":other_player_selected_troop", ":all_player_no", slot_player_coop_selected_troop), 
-          (eq, ":other_player_selected_troop", ":script_param_1"),
-          (assign, ":num_players", 0),
-          (assign, ":break", 1),
-        (try_end),
-
-        (eq, ":break", 0),
-        (assign, ":stop", 0),
-        (try_for_agents, ":cur_agent"), #dont show this troop if dead or already controlled
-          (eq, ":stop", 0),
-          (agent_is_human, ":cur_agent"),
-          (assign, ":break", 1), #if agents have spawned
-          (agent_get_troop_id, ":agent_troop_no", ":cur_agent"),
-          (eq, ":agent_troop_no", ":script_param_1"),
-          (assign, ":stop", 1), #if this troop is found stop trying agents
-          (agent_is_alive, ":cur_agent"),#is alive
-          (agent_is_non_player, ":cur_agent"),#is not player
-          (assign, ":break", 0), #if agent is available then continue
-        (try_end),
-
-        (eq, ":break", 0),
-        (str_store_troop_name, s1, ":script_param_1"),
-        (create_button_overlay, reg0, s1, 0),
-        (overlay_set_color, reg0, 0xFFFFFF), 
-
-          #native uses multi_data_troop_button_indices_begin which limits to 16 troops per team
-        (troop_set_slot, "trp_temp_array_c", reg0, ":script_param_1"), #store troop id in slot = object
-
-        (val_sub, ":cur_y", escape_menu_item_height),
-        (position_set_y, pos1, ":cur_y"),
-        (overlay_set_position, reg0, pos1),
-      (try_end),
-
-      (try_begin),
-        (eq, "$g_multiplayer_player_respawn_as_bot", 1), #0, 1 if respawn as bot
-        (str_store_string, s1, "@Random troop"),
-        (create_button_overlay, "$g_presentation_obj_coop_troop_select_rand", s1, 0),
-        (overlay_set_color, "$g_presentation_obj_coop_troop_select_rand", 0xFFFFFF), 
-        (val_sub, ":cur_y", escape_menu_item_height),
-        (position_set_y, pos1, ":cur_y"),
-        (overlay_set_position, "$g_presentation_obj_coop_troop_select_rand", pos1),
-      (try_end),
-
-      (presentation_set_duration, 999999),
-      ]),
-   
-    (ti_on_presentation_event_state_change,
-     [(store_trigger_param_1, ":object"),
-      (try_begin),
-        (eq, ":object", "$g_presentation_obj_coop_troop_select_rand"),
-        (assign, "$coop_my_troop_no", 0),
-        (presentation_set_duration, 0),
-      (else_try),
-        (troop_get_slot, "$coop_my_troop_no", "trp_temp_array_c", ":object"), #trp_temp_array_c slot_no = object_no
-        (try_begin),
-          (multiplayer_get_my_player, ":my_player_no"),
-          (player_get_agent_id, ":player_agent", ":my_player_no"),
-          (this_or_next|eq, ":player_agent", -1),#if spectator
-          (neg|agent_is_alive, ":player_agent"), #if dead
-          (player_set_troop_id, ":my_player_no", "$coop_my_troop_no"),#NEW
-          (multiplayer_send_int_to_server, multiplayer_event_change_troop_id, "$coop_my_troop_no"),
-        (try_end),
-
-        (presentation_set_duration, 0),
-        (assign, "$g_presentation_state", 0),
-        (start_presentation, "prsnt_coop_commander_select"),
-      (try_end),
-
-      ]),
-    (ti_on_presentation_run,
-     [
-
-      (try_begin),
-        (eq, "$coop_refresh_troop_select_presentation", 1),
-        (assign, "$coop_refresh_troop_select_presentation", 0),
-        (presentation_set_duration, 0),
-        (start_presentation, "prsnt_coop_troop_select"),
-      (try_end),
-
-
-      (try_begin),
-        (key_clicked, key_escape),
-#        (multiplayer_get_my_player, ":my_player_no"),
-#        (is_between, ":my_player_no", 0, multiplayer_max_possible_player_id),
-#        (multiplayer_get_my_troop, ":my_troop"),
-#        (try_begin), #spectator
-#          (neg|is_between, ":my_troop", active_npcs_including_player_begin, "trp_knight_1_1_wife"), 
-#          (player_set_troop_id, ":my_player_no", -1),
-#          (multiplayer_send_int_to_server, multiplayer_event_change_troop_id, -1),
-#          (multiplayer_send_int_to_server, multiplayer_event_change_team_no, multi_team_spectator),
-#          (player_set_team_no, ":my_player_no", multi_team_spectator),
-#        (try_end),
-        (presentation_set_duration, 0),
-      (try_end),
-      ]),
-    ]),
 
 
 
@@ -1480,218 +1328,6 @@ coop_presentations = [
 ############################################################
 
 
-  ("coop_team_select", prsntf_manual_end_only, 0, [
-    (ti_on_presentation_load,
-     [(set_fixed_point_multiplier, 1000),
-
-      (create_mesh_overlay, reg0, "mesh_mp_ingame_menu"),
-      (position_set_x, pos1, 250),
-      (position_set_y, pos1, 80),
-      (overlay_set_position, reg0, pos1),
-      (position_set_x, pos1, 1000),
-      (position_set_y, pos1, 1000),
-      (overlay_set_size, reg0, pos1),
-
-      (str_clear, s0),
-      (create_text_overlay, "$g_presentation_obj_team_select_container", s0, tf_scrollable_style_2),
-      (position_set_x, pos1, 285),
-      (position_set_y, pos1, 125),
-      (overlay_set_position, "$g_presentation_obj_team_select_container", pos1),
-      (position_set_x, pos1, 405),
-      (position_set_y, pos1, 500),
-      (overlay_set_area_size, "$g_presentation_obj_team_select_container", pos1),
-      (set_container_overlay, "$g_presentation_obj_team_select_container"),
-
-      (assign, ":cur_y", 450),
-
-      (create_text_overlay, reg0, "str_choose_a_faction", 0),
-      (overlay_set_color, reg0, 0xFFFFFF),
-      (position_set_x, pos1, 0),
-      (position_set_y, pos1, ":cur_y"),
-      (overlay_set_position, reg0, pos1),
-      (val_sub, ":cur_y", escape_menu_item_height),
-      (position_set_y, pos1, ":cur_y"),
-      (position_set_x, pos1, 100),
-
-      (multiplayer_get_my_player, ":my_player_no"),
-      (team_get_faction, ":script_param_2", 0),
-      (str_store_faction_name, s0, ":script_param_2"),
-      (create_button_overlay, "$g_presentation_obj_team_select_1", s0, 0),
-      (try_begin),
-        (call_script, "script_cf_multiplayer_team_is_available", ":my_player_no", 0),
-        (overlay_set_color, "$g_presentation_obj_team_select_1", 0xFFFFFF),
-        (overlay_set_hilight_color, "$g_presentation_obj_team_select_1", 0x55FF50),
-        (assign, "$g_multiplayer_team_select_1_available", 1),
-      (else_try),
-        (overlay_set_color, "$g_presentation_obj_team_select_1", 0x888888),
-        (overlay_set_hilight_color, "$g_presentation_obj_team_select_1", 0x888888),
-        (assign, "$g_multiplayer_team_select_1_available", 0),
-      (try_end),
-      (position_set_y, pos1, ":cur_y"),
-      (overlay_set_position, "$g_presentation_obj_team_select_1", pos1),
-      (val_sub, ":cur_y", escape_menu_item_height),
-      (position_set_y, pos1, ":cur_y"),
-
-      (team_get_faction, ":script_param_2", 1),
-      (str_store_faction_name, s0, ":script_param_2"),
-      (create_button_overlay, "$g_presentation_obj_team_select_2", s0, 0),
-      (try_begin),
-        (call_script, "script_cf_multiplayer_team_is_available", ":my_player_no", 1),
-        (overlay_set_color, "$g_presentation_obj_team_select_2", 0xFFFFFF),
-        (overlay_set_hilight_color, "$g_presentation_obj_team_select_2", 0x55FF50),
-        (assign, "$g_multiplayer_team_select_2_available", 1),
-      (else_try),
-        (overlay_set_color, "$g_presentation_obj_team_select_2", 0x888888),
-        (overlay_set_hilight_color, "$g_presentation_obj_team_select_2", 0x888888),
-        (assign, "$g_multiplayer_team_select_2_available", 0),
-      (try_end),
-      (overlay_set_position, "$g_presentation_obj_team_select_2", pos1),
-      (val_sub, ":cur_y", escape_menu_item_height),
-      (position_set_y, pos1, ":cur_y"),
-
-      (create_button_overlay, "$g_presentation_obj_team_select_3", "str_spectator", 0),
-      (overlay_set_color, "$g_presentation_obj_team_select_3", 0xFFFFFF),
-      (overlay_set_position, "$g_presentation_obj_team_select_3", pos1),
-      (val_sub, ":cur_y", escape_menu_item_height),
-      (position_set_y, pos1, ":cur_y"),
-
-      (presentation_set_duration, 999999),
-      ]),
-
-    (ti_on_presentation_event_state_change,
-     [(store_trigger_param_1, ":object"),
-      (multiplayer_get_my_player, ":my_player_no"),
-      (try_begin),
-        (eq, "$g_waiting_for_confirmation_to_terminate", 0),
-        (try_begin),
-          (eq, ":object", "$g_presentation_obj_team_select_1"),
-          (try_begin),
-            (call_script, "script_cf_multiplayer_team_is_available", ":my_player_no", 0),
-            (try_begin),
-              (player_get_team_no, ":my_team", ":my_player_no"),
-              (neq, ":my_team", 0),
-              (assign, "$g_confirmation_result", 0),
-              (assign, "$g_waiting_for_confirmation_to_terminate", 1),
-              (player_get_troop_id, "$g_confirmation_troop_backup", ":my_player_no"),
-              (player_get_team_no, "$g_confirmation_team_backup", ":my_player_no"),
-              (player_set_troop_id, ":my_player_no", -1),
-              (multiplayer_send_int_to_server, multiplayer_event_change_team_no, 0),
-              (player_set_team_no, ":my_player_no", 0),
-              (assign, "$coop_my_team", 0), #
-            (else_try),
-              (presentation_set_duration, 0),
-              (start_presentation, "prsnt_coop_troop_select"),
-            (try_end),
-          (try_end),
-        (else_try),
-          (eq, ":object", "$g_presentation_obj_team_select_2"),
-          (try_begin),
-            (call_script, "script_cf_multiplayer_team_is_available", ":my_player_no", 1),
-            (try_begin),
-              (player_get_team_no, ":my_team", ":my_player_no"),
-              (neq, ":my_team", 1),
-              (assign, "$g_confirmation_result", 0),
-              (assign, "$g_waiting_for_confirmation_to_terminate", 1),
-              (player_get_troop_id, "$g_confirmation_troop_backup", ":my_player_no"),
-              (player_get_team_no, "$g_confirmation_team_backup", ":my_player_no"),
-              (player_set_troop_id, ":my_player_no", -1),
-              (multiplayer_send_int_to_server, multiplayer_event_change_team_no, 1),
-              (player_set_team_no, ":my_player_no", 1),
-              (assign, "$coop_my_team", 1), #
-            (else_try),
-              (presentation_set_duration, 0),
-              (start_presentation, "prsnt_coop_troop_select"),
-            (try_end),
-          (try_end),
-        (else_try),
-          (eq, ":object", "$g_presentation_obj_team_select_3"),
-          (player_set_troop_id, ":my_player_no", -1),
-          (multiplayer_send_int_to_server, multiplayer_event_change_team_no, multi_team_spectator),
-          (player_set_team_no, ":my_player_no", multi_team_spectator),
-          (assign, "$coop_my_team", multi_team_spectator), #
-          (presentation_set_duration, 0),
-        (try_end),
-      (try_end),
-      ]),
-
-    (ti_on_presentation_run,
-     [
-      (multiplayer_get_my_player, ":my_player_no"),
-      (try_begin),
-        (key_clicked, key_escape),
-        (eq, "$g_waiting_for_confirmation_to_terminate", 0),
-        (multiplayer_get_my_team, ":my_team"),
-        (try_begin),
-          (eq, ":my_team", multi_team_unassigned),
-          (player_set_troop_id, ":my_player_no", -1),
-          (multiplayer_send_int_to_server, multiplayer_event_change_team_no, multi_team_spectator),
-          (player_set_team_no, ":my_player_no", multi_team_spectator),
-        (try_end),
-        (presentation_set_duration, 0),
-      (else_try),
-        (eq, "$g_waiting_for_confirmation_to_terminate", 1),
-        (eq, "$g_confirmation_result", 1),
-        (assign, "$g_waiting_for_confirmation_to_terminate", 0),
-        (assign, "$g_confirmation_result", 0),
-        (presentation_set_duration, 0),
-        # coop only show troop select if heroes are available
-        (multiplayer_get_my_team, ":my_team"),
-        (try_begin),
-          (eq, ":my_team", 0),
-          (party_get_num_companion_stacks, ":num_heroes", coop_temp_party_enemy_heroes),
-          (gt, ":num_heroes", 0),
-          (start_presentation, "prsnt_coop_troop_select"),
-        (else_try),
-          (eq, ":my_team", 1),
-          (party_get_num_companion_stacks, ":num_heroes", coop_temp_party_ally_heroes),
-          (gt, ":num_heroes", 0),
-          (start_presentation, "prsnt_coop_troop_select"),
-        (try_end),
-
-      (else_try),
-        (eq, "$g_waiting_for_confirmation_to_terminate", 1),
-        (eq, "$g_confirmation_result", -1),
-        #return troop and team back to the old state
-        (player_set_troop_id, ":my_player_no", "$g_confirmation_troop_backup"),
-        (player_set_team_no, ":my_player_no", "$g_confirmation_team_backup"),
-        (assign, "$g_waiting_for_confirmation_to_terminate", 0),
-        (assign, "$g_confirmation_result", 0),
-        (presentation_set_duration, 0),
-        (start_presentation, "prsnt_coop_team_select"),
-      (else_try),
-        (assign, ":do_refresh", 0),
-        (try_begin),
-          (call_script, "script_cf_multiplayer_team_is_available", ":my_player_no", 0),
-          (try_begin),
-            (eq, "$g_multiplayer_team_select_1_available", 0),
-            (assign, ":do_refresh", 1),
-          (try_end),
-        (else_try),
-          #not available
-          (try_begin),
-            (eq, "$g_multiplayer_team_select_1_available", 1),
-            (assign, ":do_refresh", 1),
-          (try_end),
-        (try_end),
-        (try_begin),
-          (call_script, "script_cf_multiplayer_team_is_available", ":my_player_no", 1),
-          (try_begin),
-            (eq, "$g_multiplayer_team_select_2_available", 0),
-            (assign, ":do_refresh", 1),
-          (try_end),
-        (else_try),
-          #not available
-          (try_begin),
-            (eq, "$g_multiplayer_team_select_2_available", 1),
-            (assign, ":do_refresh", 1),
-          (try_end),
-        (try_end),
-        (eq, ":do_refresh", 1),
-        (presentation_set_duration, 0),
-        (start_presentation, "prsnt_coop_team_select"),
-      (try_end),
-      ]),
-    ]),
 
 
 
@@ -1859,15 +1495,15 @@ coop_presentations = [
 
     (ti_on_presentation_run,
      [
+       # Battle join no longer chains through here (straight to spawn);
+       # this presentation now only serves the Esc-menu welcome/rules
+       # display: dismiss closes it, rules mode returns to the Esc menu.
        (str_store_welcome_message, s0),
        (try_begin),
          (neq, "$g_multiplayer_show_server_rules", 1),
          (this_or_next|str_is_empty, s0),
          (eq, "$g_multiplayer_welcome_message_shown", 1),
          (presentation_set_duration, 0),
-         (neg|is_presentation_active, "prsnt_coop_escape_menu"),
-         (neg|is_presentation_active, "prsnt_coop_team_select"),
-         (start_presentation, "prsnt_coop_team_select"),
        (else_try),
          (store_mission_timer_a, ":mission_timer"),
          (gt, ":mission_timer", 1),
@@ -1878,14 +1514,11 @@ coop_presentations = [
          (key_clicked, key_right_mouse_button),
          (assign, "$g_multiplayer_welcome_message_shown", 1),
          (presentation_set_duration, 0),
-         (neg|is_presentation_active, "prsnt_coop_escape_menu"),
-         (neg|is_presentation_active, "prsnt_coop_team_select"),
          (try_begin),
            (eq, "$g_multiplayer_show_server_rules", 1),
            (assign, "$g_multiplayer_show_server_rules", 0),
+           (neg|is_presentation_active, "prsnt_coop_escape_menu"),
            (start_presentation, "prsnt_coop_escape_menu"),
-         (else_try),
-           (start_presentation, "prsnt_coop_team_select"),
          (try_end),
        (try_end),
       ]),
@@ -1896,8 +1529,6 @@ coop_presentations = [
     (ti_on_presentation_load,
      [(set_fixed_point_multiplier, 1000),
 
-      (assign, "$g_presentation_obj_escape_menu_1", -1),
-      (assign, "$g_presentation_obj_escape_menu_2", -1),
       (assign, "$g_presentation_obj_escape_menu_3", -1),
       (assign, "$g_presentation_obj_escape_menu_4", -1),
       (assign, "$g_presentation_obj_escape_menu_5", -1),
@@ -1940,18 +1571,10 @@ coop_presentations = [
       (position_set_x, pos1, 0),
       (position_set_y, pos1, ":cur_y"),
       (overlay_set_position, reg0, pos1),
-      (val_sub, ":cur_y", escape_menu_item_height),
-
-      (create_button_overlay, "$g_presentation_obj_escape_menu_1", "str_choose_faction", 0),
-      (overlay_set_color, "$g_presentation_obj_escape_menu_1", 0xFFFFFF),
-
 
       (try_begin),
         (multiplayer_get_my_team, ":my_team"),
         (lt, ":my_team", multi_team_spectator),
-        (create_button_overlay, "$g_presentation_obj_escape_menu_2", "@Choose Character", 0),
-        (overlay_set_color, "$g_presentation_obj_escape_menu_2", 0xFFFFFF),
-
         (create_button_overlay, "$g_presentation_obj_escape_menu_3", "@Choose Troops", 0),
         (overlay_set_color, "$g_presentation_obj_escape_menu_3", 0xFFFFFF),
       (try_end),
@@ -2067,20 +1690,11 @@ coop_presentations = [
 #
       (try_begin),
         (ge, "$g_presentation_obj_escape_menu_10", 0),
+        (val_sub, ":cur_y", escape_menu_item_height),
         (position_set_y, pos1, ":cur_y"),
         (overlay_set_position, "$g_presentation_obj_escape_menu_10", pos1),
-        (val_sub, ":cur_y", escape_menu_item_height),
       (try_end),
 
-      (position_set_y, pos1, ":cur_y"),
-      (overlay_set_position, "$g_presentation_obj_escape_menu_1", pos1),
-
-      (try_begin),
-        (ge, "$g_presentation_obj_escape_menu_2", 0),
-        (val_sub, ":cur_y", escape_menu_item_height),
-        (position_set_y, pos1, ":cur_y"),
-        (overlay_set_position, "$g_presentation_obj_escape_menu_2", pos1),
-      (try_end),
       (try_begin),
         (ge, "$g_presentation_obj_escape_menu_3", 0),
         (val_sub, ":cur_y", escape_menu_item_height),
@@ -2168,14 +1782,6 @@ coop_presentations = [
     (ti_on_presentation_event_state_change,
      [(store_trigger_param_1, ":object"),
       (try_begin),
-        (eq, ":object", "$g_presentation_obj_escape_menu_1"),
-        (presentation_set_duration, 0),
-        (start_presentation, "prsnt_coop_team_select"),
-      (else_try),
-        (eq, ":object", "$g_presentation_obj_escape_menu_2"),
-        (presentation_set_duration, 0),
-        (start_presentation, "prsnt_coop_troop_select"),
-      (else_try),
         (eq, ":object", "$g_presentation_obj_escape_menu_3"),
         (presentation_set_duration, 0),
         (assign, "$g_presentation_state", 0),

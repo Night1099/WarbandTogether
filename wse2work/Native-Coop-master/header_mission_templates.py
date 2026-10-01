@@ -127,6 +127,7 @@ af_override_fullhelm        = 0x00000200
 
 #af_override_hands           = 0x00000100
 af_require_civilian         = 0x10000000
+af_castle_lord              = af_override_horse | af_override_weapons | af_require_civilian
 
 #af_override_all_but_horse   = 0x000000ff
 af_override_all_but_horse   = af_override_weapons | af_override_head | af_override_body |af_override_gloves

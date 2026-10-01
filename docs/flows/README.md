@@ -21,6 +21,7 @@ anchors, invariants) and audits it against native/engine ground truth
 | Inventory sync (inv screen, equip pushes) | `inventory-sync.md` | audited |
 | Party screen sync (roster, dismiss, upgrade) | `party-screen-sync.md` | audited |
 | Steam P2P tunnel (internet transport, no port forwarding; + Join Game invites & server password since phase 4) | `steam-tunnel.md` | audited |
+| Campaign server tick (frame loop, simple-trigger clock, party replication, per-client send pacing) | `campaign-server-tick.md` | audited (engine side); D1 done `562482c`, D2/D4 implemented-unverified, D3 apply-verified |
 
 ## Engine findings map
 
@@ -34,6 +35,7 @@ documents — see the citation note above).
 | XP sync | `docs/archive/SYNC_REDESIGN.md`, `docs/sync-systems/`, `patches/Warband/findings.md` (kill-XP paths), `patches/WSE2Dedicated/kb.h` |
 | Inventory sync | `docs/archive/RE_NATIVE_SCREENS.md`, `docs/archive/SP_SCREEN_RECREATION.md` |
 | Party screen sync | `docs/archive/RE_NATIVE_SCREENS.md`, `docs/archive/Screen_Session.md` |
+| Campaign server tick | `patches/WSE2Dedicated/findings_campaign_periodic_load.md`, `patches/WarbandDedicated/findings.md` ("nettune patch sites", send-path Q1-Q7), `patches/WarbandDedicated/network_tick_rate.md`, `docs/wse2-binary-patches.md` |
 | Steam P2P tunnel | `docs/archive/STEAM_P2P_FACTS.md`, `docs/archive/NETWORKING_AUDIT.md`, `docs/archive/TRAFFIC_OPTIMIZATION.md`, `patches/Warband_WSE2/findings.md` ("SteamAPI_RunCallbacks pump audit", "Loopback join classification", "Phase 4 invites+password RE" Q5–Q11) |
 
 RE symbol knowledge lives in `patches/<project>/kb.h`; narratives in
@@ -46,21 +48,29 @@ audit: `patches/Warband/findings.md` ("Native kill-vs-wound (surgery) rules",
 
 ## Consolidated fix list
 
-Every `DIVERGES` verdict across the six dossiers, ranked by player impact.
+> **History.** This list is closed. New `DIVERGES` findings become features in
+> the parity ledger (`docs/parity/ledger/`) that link the dossier; open
+> items from this list are tracked there too.
+
+Every `DIVERGES` verdict across the seven dossiers, ranked by player impact.
 "Src" points to the dossier fix-list row for full context.
 
-**Status:** A1–A5 and B1 are **implemented** in commit `50f4ac1` (full
-29-step module build green) and marked ✅ below. **B1 is runtime-verified
+**Status:** A1–A5 and B1 were **implemented** in commit `50f4ac1` (full
+29-step module build green) and are marked ✅ below. **B1 is runtime-verified
 (2026-07-10)** — legit edits stick, no false `[INV GUARD]` rejects; its
 dossier verdict is flipped to OK. Runtime testing of B1 also exposed and
 fixed a join-push-ordering bug (char sync must precede inventory — see
-inventory-sync.md invariants). A1–A5 are **not yet runtime-tested** —
-validate them in the wave-2 smoke test before relying on them. **Groups
+inventory-sync.md invariants). A1–A4 were runtime-verified 2026-07-10, A5
+in `13ebcad`; A6–A9 are verified per their rows (2026-07-19..25). **Groups
 B2–B3 are done** (`9558722` merge, runtime smoke 2026-07-25, incl. the A4
-residual). **Group C is done** — implemented in `1dc8fec` (module) +
+residual). **B4–B8 are done** (WarbandTogether PR #1 port, runtime-verified
+2026-09-18). **Group C is done** — implemented in `1dc8fec` (module) +
 `fd0e088` (C layer), runtime smoke passed 2026-07-11, all C verdicts
 flipped to OK. That smoke also surfaced a pre-existing player-blocking
 symptom of A7 (post-dedicated-battle stuck player — see the A7 row).
+**Group D** (campaign-server load, 2026-09-20): D1 done + runtime-verified
+(`562482c`); D2/D4 implemented but not runtime-tested; D3 apply-verified on
+both dedicated exes, drain effect not yet measured.
 
 ### A. Gameplay correctness (affects live play)
 
@@ -83,16 +93,30 @@ symptom of A7 (post-dedicated-battle stuck player — see the A7 row).
 | B1 | ✅ **verified** inventory (6) | ~~`inv_change` applied verbatim server-side~~ Fixed (`50f4ac1`) + runtime-verified 2026-07-10 | `module_coop_scripts.py` ev-14/15 arms |
 | B2 | ✅ **verified** inventory (1) | ~~No push-on-mutation~~ Fixed (`87f4c82`: `coop_push_player_inventory` single push contract; trade purchases applied server-side `6c4db5c`); runtime smoke 2026-07-25 | `module_coop_scripts.py` ECONOMY/MISC push helpers |
 | B3 | ✅ **verified** inventory (2) | ~~Open-time snapshot baseline, ungated~~ Fixed (`2f2f2bc`+`75e9a57`: ev 13 re-added, recv-arm baseline mirror + `snap_ready` gate); runtime smoke 2026-07-25 | `module_scripts.py` `wse_window_opened` + recv arms |
+| B4 | ✅ **verified** inventory (7) | ~~Equip slot 9 not persisted~~ Fixed (`332ecfb`, `872353d`) + runtime-verified 2026-09-18 | `coop_save_character`/`coop_load_character`/INV GUARD |
+| B5 | ✅ **verified** inventory (8) | ~~Client bag diff read past the IM-derived visible capacity (phantom clears every close)~~ Fixed (`de99f67`, `7f7e6e8`, `636da0d`; clamp is client-only, server guard covers all 106 slots) + runtime-verified 2026-09-18. Diagnosed in WarbandTogether PR #1 | `coop_inv_client_diff_and_send`, `coop_inv_bag_cap` |
+| B6 | ✅ **verified** inventory (9) | ~~Async equip/bag push overwrote a live edit~~ Fixed (`adef0f9`, `6368c97`: `coop_inv_recv_mirror_ok`, armed after `snap_ready`) + runtime-verified 2026-09-18 | ev 15/25 recv arms |
+| B7 | ✅ **verified** inventory (10) | ~~Fast close-then-reopen lost the close diff~~ Fixed (`0ec78f0`, `6368c97`: `wse_window_opened` flushes a still-open session, trade-aware) + runtime-verified 2026-09-18 | `module_scripts.py` `wse_window_opened` |
+| B8 | ✅ **verified** inventory (11) | ~~`inv_change` accepted any item id~~ Fixed (`332ecfb`) + runtime-verified 2026-09-18 | ev 14 arm |
 
 ### C. Dead code / protocol-doc drift
 
 | # | Flow (src) | What's wrong | Owner |
 |---|------------|--------------|-------|
-| C1 | battle-pipeline (7) | ch125 ev 14 `return_to_campaign` — defined, documented, never sent/handled | `header_common.py` + project-state |
-| C2 | battle-pipeline (8) | ~~ASI writes `s57` reconnect address; nothing consumes it~~ Resolved by repurpose: phase 4 made `s57` the **join-password mirror** (`src/asi/coop.c:196`, rewritten every 500 ms, 47-char clamp) and `module_simple_triggers.py:88` consumes it as the deferred battle-connect password arg. The register is NOT private — native scratch writers exist and can clobber it between mirror ticks; tracked in `docs/DEFERRED.md` | `src/asi/coop.c:196` + `module_simple_triggers.py:88` |
-| C3 | battle-pipeline (9) | Legacy `coop_battle.c` orchestration (WSELoaderServer + `battle_result.txt`) installed for HOST/CLIENT but superseded by ENet IPC | `src/coop_battle.c` + `src/coop_campaign.c` |
-| C4 | siege (7) | Battle types 3–6 (defend siege, village raids, bandit lair) defined + loader-handled but never launched | `module_constants.py` + `module_coop_scripts.py` |
-| C5 | xp-sync (5) | ch125 ev 22 pushes `num_upgradeable`, not XP — misnamed constant + wrong project-state row | `header_common.py` + project-state |
-| C6 | inventory (4) | Orphaned raw-slot 0–19 mirror in ev-15 recv arm (real baseline is slots 160+) | `module_coop_scripts.py:8452–8454` |
-| C7 | inventory (5) | ch49 ev 13 `request_inv_sync` — handler exists, no sender (inventory pre-warmed on join) | `header_common.py` + `module_coop_scripts.py` + project-state |
-| C8 | party-screen (4) | ch49 ev 8/9 `party_sync_begin/stack` — defined, dead (roster syncs via C-layer snapshot/delta) | `header_common.py` + project-state |
+| C1 | ✅ battle-pipeline (7) | ~~ch125 ev 14 `return_to_campaign` — defined, documented, never sent/handled~~ Deleted (`1dc8fec`, smoke 2026-07-11). Id 14 was briefly reused for `char_sync_renown` (A7), then freed again by the packed char sync; `header_common.py` now lists 14 among the free ch125 ids | `header_common.py` + project-state |
+| C2 | ✅ battle-pipeline (8) | ~~ASI writes `s57` reconnect address; nothing consumes it~~ Original write deleted (`fd0e088`); phase 4 then repurposed `s57` as the **join-password mirror** (`src/asi/coop.c:210`, rewritten every 500 ms, 47-char clamp) and `module_simple_triggers.py:224` consumes it as the deferred battle-connect password arg. The register is NOT private — native scratch writers exist and can clobber it between mirror ticks; tracked in `docs/DEFERRED.md` | `src/asi/coop.c:210` + `module_simple_triggers.py:224` |
+| C3 | ✅ battle-pipeline (9) | ~~Legacy `coop_battle.c` orchestration (WSELoaderServer + `battle_result.txt`) installed for HOST/CLIENT but superseded by ENet IPC~~ `src/coop_battle.c`/`.h` deleted (`fd0e088`, smoke 2026-07-11); `src/` now holds only `coop_campaign.c` + `shared/`, and the campaign ENet channel it fed (port 7240) was retired later (project-state, IPC protocol) | `src/coop_campaign.c` |
+| C4 | ✅ siege (7) | ~~Battle types 3–6 (defend siege, village raids, bandit lair) defined + loader-handled but never launched~~ Closed as documented, not removed (`1dc8fec`): `module_constants.py:2113–2116` keeps types 3–6 as defined-but-not-launched; only types 1/2 launch. The bandit-lair map entry point is parked in `docs/DEFERRED.md` (D2) | `module_constants.py` + `module_coop_scripts.py` |
+| C5 | ✅ xp-sync (5) | ~~ch125 ev 22 pushes `num_upgradeable`, not XP — misnamed constant + wrong project-state row~~ Renamed `party_stack_num_upgradeable` (`header_common.py:188`) + `coop_send_party_upgradeable_to_client`; project-state row corrected (`1dc8fec`) | `header_common.py` + project-state |
+| C6 | ✅ inventory (4) | ~~Orphaned raw-slot 0–19 mirror in ev-15 recv arm (real baseline is slots 160+)~~ Mirror deleted (`1dc8fec`); the ev-15 arm (`module_coop_scripts.py:12751`) now writes the troop only through `coop_inv_recv_mirror_ok` (B6) and updates the snap baseline slots | `module_coop_scripts.py` ev-15 recv arm |
+| C7 | ✅ inventory (5) | ~~ch49 ev 13 `request_inv_sync` — handler exists, no sender (inventory pre-warmed on join)~~ Constant + handler deleted (`1dc8fec`), then **deliberately re-added for B3** (`2f2f2bc`) with a real sender: `wse_window_opened` (`module_scripts.py:51228`) requests the authoritative baseline re-push on inventory open. Superseded, not dead | `header_common.py:270` + `module_scripts.py` + `module_coop_scripts.py` |
+| C8 | ✅ party-screen (4) | ~~ch49 ev 8/9 `party_sync_begin/stack` — defined, dead (roster syncs via C-layer snapshot/delta)~~ Deleted (`1dc8fec`); the ids were since reclaimed — 8 = `identify` (steamid persistence, `ce0e287`), 9 = `request_party_upgradeable` (`header_common.py:260–266`) | `header_common.py` + project-state |
+
+### D. Campaign server load (dossier `campaign-server-tick.md`, 2026-09-20)
+
+| # | Flow (src) | What's wrong | Owner |
+|---|------------|--------------|-------|
+| D1 | ✅ **verified** campaign-server-tick (1) | ~~`(6, ...)` DEBUG all-parties-visible trigger: `party_set_flags` broadcasts one net event per active party per fire to every client (opcode 1603 has no already-set check), and position replication is suppressed for a client until its event backlog drains~~ Gated off by default (`562482c`): fires only on a campaign server launched via `coop_launch_all_debug.bat` (`COOP_DEBUG_REVEAL=1` -> `coop server cfg campaign.wsedict{debug reveal}` -> `$g_coop_debug_reveal`). The 2026-09-20/21 "verified" was wrong: the plugin wrote the dict with underscores while the module's quick strings resolve to spaces, so the gate never opened (`6a72f6b` fixed the names; `$g_coop_debug_reveal` read 1 live on 2026-09-24 with a player connected). Residual: the debug launch still broadcasts per fire | `module_simple_triggers.py:263` + `src/coop_campaign.c` + `deploy/scripts/coop_launch_all_debug.bat` |
+| D2 | ✅ campaign-server-tick (2) | ~~Vanilla bandit-lair reveal walked all parties against `p_main_party` on the server, broadcasting per hit~~ Gated SP-only (`b6b295b`, build green, not runtime-tested); coop reveal parked in `docs/DEFERRED.md` | `module_simple_triggers.py` 0.1-interval trigger |
+| D3 | ✅ campaign-server-tick (4) | ~~Backlogged client pinned to 10 Hz by a miscompiled ping term in `sendToPlayer`~~ `[NetTuning] BacklogPeriodMs` re-points the ceiling load's operand at a plugin float (`226e956`); apply-verified on both dedicated exes 2026-09-20, drain effect not yet measured with a client | `src/shared/nettune.c` |
+| D4 | ✅ campaign-server-tick (5) | ~~240 fps main loop~~ 100 (`197f230`, config only, not runtime-tested; the deployed game-dir copy must be updated by hand) | `deploy/configs/server_config.ini` |

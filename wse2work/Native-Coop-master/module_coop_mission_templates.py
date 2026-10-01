@@ -37,6 +37,35 @@ from module_constants import *
 ####################################################################################################################
 
 
+# The inventory screen is not usable inside a coop visit scene: every
+# visit template answers the key with the native message instead of a
+# screen whose edits could never reach the server. Trading with the
+# scene's merchants is the in-scene way to change the inventory.
+coop_visit_inventory_block = (
+  ti_inventory_key_pressed, 0, 0,
+  [
+    (display_message, "str_cant_use_inventory_now"),
+  ], [])
+
+# In-scene trade close, carried by every coop visit template. The dialog
+# line that opens the trade screen arms $g_coop_visit_trade_state, the
+# window hook promotes it once the trade window is up, and this tick
+# closes it from that state: a window pauses the mission, a conversation
+# does not, so the flag still set on a tick means the window just closed.
+# The diff goes to the client outbox (module_coop_scripts.py CLIENT
+# OUTBOX) and replays after the rejoin. There is no mission-end trigger,
+# so the tick is fast to beat a Tab exit right after a trade.
+coop_visit_screen_close_trigger = (
+  0.1, 0, 0,
+  [
+    (eq, "$g_coop_in_local_visit", 1),
+    (eq, "$g_coop_visit_trade_state", coop_visit_trade_window_up),
+  ],
+  [
+    (call_script, "script_coop_trade_visit_close"),
+  ])
+
+
 coop_server_check_polls = (
   1, 5, 0,
   [
@@ -579,6 +608,9 @@ coop_mission_templates = [
           # (spec 4a) -- hydrate clears it.
           (store_add, ":troop_no", multiplayer_campaign_player_troops_begin, ":player_no"),
           (player_set_troop_id, ":player_no", ":troop_no"),
+          # Menus are skipped client-side, so stamp the selection the troop
+          # chooser used to send (pre-spawn readers key on this slot).
+          (player_set_slot, ":player_no", slot_player_coop_selected_troop, ":troop_no"),
           (store_mission_timer_a, ":bjoin_time"),
           (val_max, ":bjoin_time", 1),
           (player_set_slot, ":player_no", slot_player_join_time, ":bjoin_time"),
@@ -680,9 +712,9 @@ coop_mission_templates = [
          # own start trigger is the hook for the campaign trigger's
          # counterpart in module_simple_triggers.py.
          (try_begin),
-           (eq, "$g_coop_password_applied", 0),
+           (eq, "$g_coop_server_cfg_applied", 0),
            (multiplayer_is_dedicated_server),
-           (call_script, "script_coop_apply_server_password"),
+           (call_script, "script_coop_apply_server_cfg"),
          (try_end),
 
          ]),
@@ -4743,6 +4775,9 @@ coop_mission_templates = [
           (player_set_team_no, ":player_no", "$attacker_team"),
           (store_add, ":troop_no", multiplayer_campaign_player_troops_begin, ":player_no"),
           (player_set_troop_id, ":player_no", ":troop_no"),
+          # Menus are skipped client-side, so stamp the selection the troop
+          # chooser used to send (pre-spawn readers key on this slot).
+          (player_set_slot, ":player_no", slot_player_coop_selected_troop, ":troop_no"),
           # Character load deferred to ch126 coop_event_identify (5 s
           # username fallback in coop_battle_hydrate_timeout). Spawn is
           # gated on join_time == 0 (spec 4a) -- hydrate clears it.
@@ -8429,5 +8464,204 @@ coop_mission_templates = [
 #Doghotel end
 	]# + crouching_triggers
 	),
+
+  # Coop lord's hall. Native visit_town_castle with the hooks that read
+  # server-only state removed: no banner/chest replacement (slot_town_lord
+  # is not replicated), no prison-break arms. Entry 0 is the player, 6/7
+  # the guards, 16+ the lords and ladies, all placed from the pushed roster.
+  (
+    "coop_visit_hall",0,-1,
+    "You enter the halls of the lord.",
+    [(0,mtef_scene_source|mtef_team_0,af_override_horse|af_override_weapons|af_override_head,0,1,[]),
+     (1,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (2,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (3,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (4,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (5,mtef_visitor_source|mtef_team_0,af_override_horse,0,1,[]),
+     (6,mtef_visitor_source|mtef_team_0,af_override_horse,0,1,[]),
+     (7,mtef_visitor_source|mtef_team_0,af_override_horse,0,1,[]),
+     (8,mtef_visitor_source,af_override_horse,0,1,[]),
+     (9,mtef_visitor_source,af_override_horse,0,1,[]),
+     (10,mtef_scene_source,af_override_horse,0,1,[]),
+     (11,mtef_scene_source,af_override_horse,0,1,[]),
+     (12,mtef_visitor_source,af_override_horse,0,1,[]),
+     (13,mtef_visitor_source,0,0,1,[]),
+     (14,mtef_visitor_source,0,0,1,[]),
+     (15,mtef_visitor_source,0,0,1,[]),
+     (16,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (17,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (18,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (19,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (20,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (21,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (22,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (23,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (24,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (25,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (26,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (27,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (28,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (29,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (30,mtef_visitor_source,af_castle_lord,0,1,[]),
+     (31,mtef_visitor_source,af_castle_lord,0,1,[])
+     ],
+    [
+      (ti_on_agent_spawn, 0, 0, [],
+      [
+        (store_trigger_param_1, ":agent_no"),
+        (call_script, "script_init_town_agent", ":agent_no"),
+      ]),
+
+      coop_visit_inventory_block,
+      coop_visit_screen_close_trigger,
+
+      (ti_tab_pressed, 0, 0,
+      [
+        (set_trigger_result, 1),
+      ], []),
+    ],
+  ),
+
+  # Coop tavern. Native town_default's entry list without its scene
+  # dressing and tavern-fight triggers: entry 0 is the player, entries 1-15
+  # are mtef_scene_source so the engine places the tavernkeeper from his
+  # troops.txt home entry (9). Mercenaries, companions and the ransom
+  # broker are not placed: hiring and ransoms cannot reach the server from
+  # inside a visit.
+  (
+    "coop_visit_tavern",0,-1,
+    "You enter the tavern.",
+    [(0,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (1,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (2,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (3,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (4,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (5,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (6,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (7,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (8,mtef_scene_source,af_override_horse,0,1,[]),
+     (9,mtef_scene_source,af_override_horse,0,1,[]),
+     (10,mtef_scene_source,af_override_horse,0,1,[]),
+     (11,mtef_scene_source,af_override_horse,0,1,[]),
+     (12,mtef_scene_source,af_override_horse,0,1,[]),
+     (13,mtef_scene_source,0,0,1,[]),
+     (14,mtef_scene_source,0,0,1,[]),
+     (15,mtef_scene_source,0,0,1,[]),
+     (16,mtef_visitor_source,af_override_horse,0,1,[]),
+     (17,mtef_visitor_source,af_override_horse,0,1,[]),
+     (18,mtef_visitor_source,af_override_horse,0,1,[]),
+     (19,mtef_visitor_source,af_override_horse,0,1,[]),
+     (20,mtef_visitor_source,af_override_horse,0,1,[]),
+     (21,mtef_visitor_source,af_override_horse,0,1,[]),
+     (22,mtef_visitor_source,af_override_horse,0,1,[]),
+     (23,mtef_visitor_source,af_override_horse,0,1,[]),
+     (24,mtef_visitor_source,af_override_horse,0,1,[]),
+     (25,mtef_visitor_source,af_override_horse,0,1,[]),
+     (26,mtef_visitor_source,af_override_horse,0,1,[]),
+     (27,mtef_visitor_source,af_override_horse,0,1,[]),
+     (28,mtef_visitor_source,af_override_horse,0,1,[]),
+     (29,mtef_visitor_source,af_override_horse,0,1,[]),
+     (30,mtef_visitor_source,af_override_horse,0,1,[]),
+     (31,mtef_visitor_source,af_override_horse,0,1,[])
+     ],
+    [
+      (ti_on_agent_spawn, 0, 0, [],
+      [
+        (store_trigger_param_1, ":agent_no"),
+        (call_script, "script_init_town_agent", ":agent_no"),
+      ]),
+
+      coop_visit_inventory_block,
+      coop_visit_screen_close_trigger,
+
+      (ti_tab_pressed, 0, 0,
+      [
+        (set_trigger_result, 1),
+      ], []),
+    ],
+  ),
+
+  # Coop night ambush. Native bandits_at_night with the teams fixed by
+  # entry (0 the player on team 0; bandit entries 4, 11, 27, 28 on team 1)
+  # and made hostile at mission start, because the visit-kind mission the
+  # ASI holds is shaped as a peaceful encounter. The outcome is queued for
+  # the server (ch49 ev 37) instead of native's result menus; the server
+  # pays from the ambush it armed.
+  (
+    "coop_bandits_at_night",0,-1,
+    "You are ambushed.",
+    [(0,mtef_scene_source|mtef_team_0,af_override_horse,aif_start_alarmed,1,[]),
+     (1,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (2,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (3,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (4,mtef_visitor_source|mtef_team_1,af_override_horse,aif_start_alarmed,1,[]),
+     (5,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (6,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (7,mtef_scene_source|mtef_team_0,af_override_horse,0,1,[]),
+     (8,mtef_scene_source,af_override_horse,0,1,[]),
+     (9,mtef_visitor_source,af_override_horse,0,1,[]),
+     (10,mtef_visitor_source,af_override_horse,0,1,[]),
+     (11,mtef_visitor_source|mtef_team_1,af_override_horse,aif_start_alarmed,1,[]),
+     (12,mtef_visitor_source,af_override_horse,0,1,[]),
+     (13,mtef_scene_source,0,0,1,[]),
+     (14,mtef_scene_source,0,0,1,[]),
+     (15,mtef_scene_source,0,0,1,[]),
+     (16,mtef_visitor_source,af_override_horse,0,1,[]),
+     (17,mtef_visitor_source,af_override_horse,0,1,[]),
+     (18,mtef_visitor_source,af_override_horse,0,1,[]),
+     (19,mtef_visitor_source,af_override_horse,0,1,[]),
+     (20,mtef_visitor_source,af_override_horse,0,1,[]),
+     (21,mtef_visitor_source,af_override_horse,0,1,[]),
+     (22,mtef_visitor_source,af_override_horse,0,1,[]),
+     (23,mtef_visitor_source,af_override_horse,0,1,[]),
+     (24,mtef_visitor_source,af_override_horse,0,1,[]),
+     (25,mtef_visitor_source,af_override_horse,0,1,[]),
+     (26,mtef_visitor_source,af_override_horse,0,1,[]),
+     (27,mtef_visitor_source|mtef_team_1,af_override_horse,aif_start_alarmed,1,[]),
+     (28,mtef_visitor_source|mtef_team_1,af_override_horse,aif_start_alarmed,1,[]),
+     (29,mtef_visitor_source,af_override_horse,0,1,[]),
+     (30,mtef_visitor_source,af_override_horse,0,1,[]),
+     (31,mtef_visitor_source,af_override_horse,0,1,[])
+     ],
+    [
+      (ti_before_mission_start, 0, 0, [],
+      [
+        (team_set_relation, 0, 1, -1),
+        (team_set_relation, 1, 0, -1),
+      ]),
+
+      coop_visit_inventory_block,
+      coop_visit_screen_close_trigger,
+
+      (ti_tab_pressed, 0, 0,
+      [
+        (display_message, "str_cannot_leave_now"),
+      ], []),
+
+      (0, 0, ti_once, [],
+      [
+        (call_script, "script_music_set_situation_with_culture", mtf_sit_ambushed),
+        (set_party_battle_mode),
+      ]),
+
+      (1, 4, ti_once,
+      [
+        (store_mission_timer_a, ":cur_time"),
+        (ge, ":cur_time", 5),
+        (this_or_next|main_hero_fallen),
+        (num_active_teams_le, 1),
+      ],
+      [
+        (assign, ":won", 1),
+        (try_begin),
+          (main_hero_fallen),
+          (assign, ":won", 0),
+        (try_end),
+        (call_script, "script_coop_outbox_push",
+          multiplayer_event_multiplayer_campaign_night_ambush_result, "$g_coop_center_party", ":won", 0),
+        (finish_mission),
+      ]),
+    ],
+  ),
 
 ]

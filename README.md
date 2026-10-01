@@ -23,6 +23,8 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 - **Persistent characters** — per-player `.wsedict` files on the campaign server, keyed by Steam account id; stats, equipment, gold, XP, and health survive reconnects
 - **Native screens in coop** — character, inventory, and trade screens work against server-authoritative state (snapshot-diff sync on screen close)
 - **Local fights** — singleplayer-style battles (including sieges) run locally on the client when no battle server round-trip is needed, with results reported back
+- **Town, village and castle visits** — walk around a center with its real people (weaponsmith, armorer, horse merchant, mayor or elder), trade with them at that center's prices, and enter the lord's hall to find the lords the map showed inside; while inside a center your party is immune to encounters. Leaving a visit rejoins the campaign server automatically
+- **Town and village quests** — mayors and elders offer their native quests; the server owns the offer, the escorted party and the reward, and each player has their own quest log. Escort-caravan and cattle-herd quests are verified end to end; bandits, wine delivery and grain landed but have not been tested yet, and wine cannot be turned in until the tavern visit exists
 - **Direct Connect** — the client ASI injects the campaign server into the MP browser from `coop.ini`; no LAN required
 - **Steam P2P tunnel + invites** — internet play with **no port forwarding**. The host sets `SteamHost=1`; friends click **"Join Game"** on the host *or on anyone already playing* (invites chain), and the host or any joiner can right-click a friend → **"Invite to Game"**. Accepting an invite **auto-joins**: the game navigates itself into the MP browser and connects, zero clicks. Manual setup via `HostSteamID64=` still works. All coop ports are tunneled over Steam Datagram Relay and surface as a loopback "COOP Direct" row in the MP browser's LAN tab
 - **Server password** — one `[Coop] Password=` protects the whole pool (campaign + every battle server); joiners mirror it in their own `coop.ini` so invite auto-join and battle-server hops authenticate automatically (a joiner without it can still type it into the MP browser's password box)
@@ -30,7 +32,7 @@ Co-op campaign mod for Mount & Blade: Warband using WSE2's multiplayer campaign 
 - Terrain-appropriate battle scenes (plain/steppe/snow/desert/forest variants)
 - 5-minute autosave on the campaign server
 
-See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync, inventory sync, party-screen sync, Steam tunnel), and `docs/BUILD.md` for the build chain.
+See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/flows/` for how each core flow works (battle pipeline, siege, XP sync, inventory sync, party-screen sync, Steam tunnel, campaign server tick), and `docs/BUILD.md` for the build chain.
 
 ## Requirements
 
@@ -47,9 +49,10 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the player/host install guide, `docs/
    - Every successful C build ends with `build\deploy.bat`, which copies the artifacts into the game directory automatically
 2. The client `mb_warband_wse2.exe` needs four small binary patches (auto-connect, ASLR off, writable .text, dual-port LAN scan) — see `docs/wse2-binary-patches.md`. The exe in a release zip is already patched
 3. Launch servers from the game directory:
-   - `coop_launch_all.bat` (campaign server + N battle slots in one go), or individually:
+   - `coop_launch_all.bat [N]` (campaign server + N battle slots, default 2, max 4, plus a client in one go), or individually:
    - `coop_campaign_server.bat` (campaign, port 7240)
-   - `coop_battle_server_<n>.bat` (battle slot n = 0–3, ports 7241/7243/7245/7247)
+   - `coop_battle_server_<n>.bat` (battle slot n = 0–3, ports 7241/7243/7245/7247; each sets `COOP_BATTLE_SLOT=<n>`)
+   - `coop_launch_all_debug.bat [N]` — same as `coop_launch_all.bat` but every party is map-visible on the campaign server (no fog of war), for debugging
 4. Launch client: WSE2 launcher → NativeCoop → Multiplayer → join the campaign server
 5. **On each client machine, set `HostIP` in `coop.ini` to the server's IP.** The campaign join works without it (LAN browser), but battle joins build their address from `HostIP` — leaving the `127.0.0.1` default makes clicking a battle silently bounce you to the MP menu. Steam-tunnel joiners are the exception: an accepted "Join Game" invite (or a configured `HostSteamID64`) re-aims every coop address at loopback, so `HostIP` is ignored while Steam is running
 
@@ -89,7 +92,7 @@ wse2work/Native-Coop-master/   — Module system (the bulk of the mod's logic)
   module_coop_mission_templates.py — Coop battle mission template
   module_game_menus.py         — Encounter flow, battle launch
 deploy/                 — Server configs, launch scripts, coop.ini template
-docs/                   — INSTALL.md, BUILD.md, wse2-binary-patches.md, flows/ (per-flow dossiers)
+docs/                   — INSTALL.md, BUILD.md, RELEASE_0.0.8.md, wse2-binary-patches.md, flows/ (per-flow dossiers)
 ```
 
 ## How It Works
@@ -115,6 +118,7 @@ AimdFloor=16000        ; congestion-control floor (stock 3000)
 AimdStep=8000          ; recovery step (stock 1000)
 PacketMaxSize=1200     ; stock 1350 — 1200 fits Steam's measured budget
 SendRateHz=30          ; 30 (stock) or 62
+BacklogPeriodMs=33     ; send-period ceiling while a player has a backlog (stock 100 = 10 Hz)
 
 [Steam]                ; read by the client ASI only
 ; SteamHost=1          ; on the HOST machine — publishes the "Join Game" button

@@ -3007,40 +3007,23 @@ scripts = [
                     (this_or_next|eq, ":ptype", spt_town),
                     (this_or_next|eq, ":ptype", spt_castle),
                     (eq, ":ptype", spt_village),
-                    # Determine center type
-                    (assign, ":center_type", coop_center_type_village),
-                    (try_begin),
-                        (eq, ":ptype", spt_town),
-                        (assign, ":center_type", coop_center_type_town),
-                    (else_try),
-                        (eq, ":ptype", spt_castle),
-                        (assign, ":center_type", coop_center_type_castle),
-                    (try_end),
-                    # Check lock
-                    (party_get_slot, ":lock_player", ":encountered_party", slot_center_coop_lock_player),
-                    (try_begin),
-                        (eq, ":lock_player", -1),
-                        # Acquire lock
-                        (party_set_slot, ":encountered_party", slot_center_coop_lock_player, ":player_no"),
-                        (player_set_slot, ":player_no", slot_player_coop_locked_center, ":encountered_party"),
-                        # Send scene_id so client can launch local visit without party_get_slot
-                        (assign, ":scene_id", 0),
-                        (try_begin),
-                            (eq, ":center_type", coop_center_type_town),
-                            (party_get_slot, ":scene_id", ":encountered_party", slot_town_center),
-                        (else_try),
-                            # Village and castle both use slot_castle_exterior
-                            (party_get_slot, ":scene_id", ":encountered_party", slot_castle_exterior),
-                        (try_end),
-                        (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-                            multiplayer_event_multiplayer_campaign_server_event_center_encounter, ":encountered_party", ":center_type", ":scene_id"),
-                    (else_try),
-                        # Already locked
-                        (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-                            multiplayer_event_multiplayer_campaign_server_event_center_locked, ":encountered_party", 0),
-                    (try_end),
+                    (call_script, "script_coop_center_enter", ":player_no", ":encountered_party"),
                     # Disengage the encounter so the party doesn't get stuck
                     (party_leave_cur_battle, ":player_party"),
+                (else_try),
+                    # Player is inside a center (holds its lock): immune to
+                    # hostile encounters until they leave. Bounce the
+                    # encounter; the AI party keeps its pursuit.
+                    (player_get_slot, ":locked_center", ":player_no", slot_player_coop_locked_center),
+                    (gt, ":locked_center", 0),
+                    (party_leave_cur_battle, ":player_party"),
+                    (leave_encounter),
+                (else_try),
+                    # A caravan or herd escorting a player's quest: never
+                    # a fight, never a menu.
+                    (party_slot_ge, ":encountered_party", slot_party_coop_quest_owner, 1),
+                    (party_leave_cur_battle, ":player_party"),
+                    (leave_encounter),
                 (else_try),
                     # Hostile encounter (original path)
                     (party_get_battle_opponent, reg13, ":player_party"),
@@ -17838,9 +17821,13 @@ scripts = [
   # Input: arg1 = troop_no (of the troop in conversation), arg2 = min_importance (of the quest)
   # Output: reg0 = quest_no (the slots of the quest will be filled after calling this script)
   ("get_quest",
-    [            
+    [
       (store_script_param_1, ":giver_troop"),
-      
+
+      (try_begin),
+        (eq, "$g_coop_in_local_visit", 1),
+        (call_script, "script_coop_quest_offer_get", ":giver_troop"),
+      (else_try),
       (store_character_level, ":player_level", "trp_player"),
       (store_troop_faction, ":giver_faction_no", ":giver_troop"),
       
@@ -19083,8 +19070,9 @@ scripts = [
       (try_end),
       
       (assign, reg0, ":result"),
+      (try_end),
   ]),
-  
+
   ("get_dynamic_quest",
   #Dynamic quests are rarer, more important quests
   #this is a separate script from get_quest, so that tavern keepers can scan all NPCs for quests 
@@ -24786,11 +24774,14 @@ scripts = [
         (call_script, "script_troop_get_player_relation", ":troop_no"),
         (assign, ":old_effective_relation", reg0),
         (troop_get_slot, ":player_relation", ":troop_no", slot_troop_player_relation),
+        (assign, ":coop_rel_before", ":player_relation"),
         (val_add, ":player_relation", ":difference"),
         (val_clamp, ":player_relation", -100, 101),
         (try_begin),
           (troop_set_slot, ":troop_no", slot_troop_player_relation, ":player_relation"),
-          
+          (store_sub, ":coop_rel_delta", ":player_relation", ":coop_rel_before"),
+          (call_script, "script_coop_relation_report", ":troop_no", ":coop_rel_delta"),
+
           (try_begin),
             (le, ":player_relation", -50),
             (unlock_achievement, ACHIEVEMENT_OLD_DIRTY_SCOUNDREL),
@@ -24833,6 +24824,9 @@ scripts = [
       (val_clamp, ":player_relation", -100, 100),
       (assign, reg2, ":player_relation"),
       (party_set_slot, ":center_no", slot_center_player_relation, ":player_relation"),
+      (store_sub, ":coop_rel_delta", ":player_relation", reg1),
+      (store_sub, ":coop_rel_id", -1, ":center_no"),
+      (call_script, "script_coop_relation_report", ":coop_rel_id", ":coop_rel_delta"),
 
       (try_begin),
         (le, ":player_relation", -50),
@@ -26184,7 +26178,9 @@ scripts = [
       (troop_set_slot, ":troop_no", slot_troop_occupation, slto_player_companion),
       (troop_set_slot, ":troop_no", slot_troop_cur_center, -1),
       (troop_set_auto_equip, ":troop_no", 0),
-      (party_add_members, "p_main_party", ":troop_no", 1),
+      (call_script, "script_coop_visit_my_party"),
+      (party_add_members, reg0, ":troop_no", 1),
+      (call_script, "script_coop_tavern_queue_recruit", ":troop_no"),
       (str_store_troop_name, s6, ":troop_no"),
       (display_message, "@{s6} has joined your party."),
 	  (troop_set_note_available, ":troop_no", 1),	
@@ -32180,6 +32176,10 @@ scripts = [
   # OUTPUT: none
   ("update_mercenary_units_of_towns",
     [(try_for_range, ":town_no", towns_begin, towns_end),
+      (party_get_slot, ":prev_troop", ":town_no", slot_center_mercenary_troop_type),
+      (party_get_slot, ":prev_amount", ":town_no", slot_center_mercenary_troop_amount),
+      (party_set_slot, ":town_no", slot_center_coop_merc_prev_troop, ":prev_troop"),
+      (party_set_slot, ":town_no", slot_center_coop_merc_prev_amount, ":prev_amount"),
       (store_random_in_range, ":troop_no", mercenary_troops_begin, mercenary_troops_end),
       (party_set_slot, ":town_no", slot_center_mercenary_troop_type, ":troop_no"),
       (store_random_in_range, ":amount", 3, 8),
@@ -32285,6 +32285,8 @@ scripts = [
       (try_end),
       
       (try_for_range, ":troop_no", companions_begin, companions_end),
+        (troop_get_slot, ":prev_center", ":troop_no", slot_troop_cur_center),
+        (troop_set_slot, ":troop_no", slot_troop_coop_prev_center, ":prev_center"),
         (troop_set_slot, ":troop_no", slot_troop_cur_center, -1),
         (troop_slot_eq, ":troop_no", slot_troop_days_on_mission, 0),
         (troop_slot_eq, ":troop_no", slot_troop_occupation, slto_inactive),
@@ -51191,8 +51193,38 @@ scripts = [
 		(store_script_param, ":window_param_1", 2),
 		(store_script_param, ":window_param_2", 3),
         
+        # Close detection is a campaign-map poller (module_simple_triggers.py)
+        # that sees screen_open still == 1 on a live tick. A close followed
+        # immediately by a reopen reaches this hook before that tick, so the
+        # previous session's diff would be lost. Each arm flushes a still-open
+        # session synchronously before starting the new one.
         (try_begin),
             (eq, ":window_no", window_inventory),
+            (eq, "$g_coop_in_local_visit", 1),
+            # Inside a local visit the only inventory window is the trade
+            # screen a dialog line just armed (the inventory key is
+            # blocked in every visit scene). Promote the trade to
+            # window-up so the scene tick closes it once the window is
+            # gone; no inventory session, no re-push request -- nothing
+            # sent from the scene reaches the server (see CLIENT OUTBOX in
+            # module_coop_scripts.py).
+            (try_begin),
+                (eq, "$g_coop_visit_trade_state", coop_visit_trade_armed),
+                (assign, "$g_coop_visit_trade_state", coop_visit_trade_window_up),
+            (try_end),
+            (set_trigger_result, -1),
+        (else_try),
+            (eq, ":window_no", window_inventory),
+            (try_begin),
+                # change_screen_trade also opens window_inventory; the trade
+                # session owns the diff there (poller runs trade first and
+                # suppresses the inventory diff), so never flush here while
+                # a trade is open.
+                (neq, "$g_coop_trade_screen_open", 1),
+                (eq, "$g_coop_inv_screen_open", 1),
+                (eq, "$g_coop_inv_snap_ready", 1),
+                (call_script, "script_coop_inv_client_diff_and_send"),
+            (try_end),
             # B3: the close-diff baseline comes from receive handlers, not an
             # open-time snapshot of the client troop. Request an authoritative
             # re-push; ev 15/25 mirror into the snap slots and ev 26 flips
@@ -51205,6 +51237,11 @@ scripts = [
             (set_trigger_result, -1),
         (else_try),
             (eq, ":window_no", window_party),
+            (try_begin),
+                (eq, "$g_coop_party_screen_open", 1),
+                (call_script, "script_coop_party_client_diff_and_send"),
+                (assign, "$g_coop_party_screen_open", 0),
+            (try_end),
             # Reset if previous session's diff already ran (flag=2)
             (try_begin),
                 (eq, "$g_coop_party_screen_open", 2),
@@ -51237,6 +51274,11 @@ scripts = [
             (set_trigger_result, -1),
         (else_try),
             (eq, ":window_no", window_character),
+            (try_begin),
+                (eq, "$g_coop_char_screen_open", 1),
+                (eq, "$g_coop_char_snap_ready", 1),
+                (call_script, "script_coop_char_client_diff_and_send"),
+            (try_end),
             # Start a fresh session. request_char_sync reloads authoritative
             # server state into snap_* slots; snap_ready goes 0->1 on
             # char_sync_done, and only then does the close poller diff.

@@ -2,9 +2,13 @@
 
 > **⚠️ Disclaimer** this is **not a fully playable mod yet**. The
 > core coop loops below work in testing, but do not expect a full campaign
-> playthrough — campaign is not persisitent yet
-> some siege and economy behavior diverges from singleplayer, and longer
-> sessions will hit bugs and desyncs. Grab the current build from the
+> playthrough — your character persists on the host (autosaved every 5
+> minutes and on disconnect), but full campaign world state (fiefs,
+> quests, diplomacy/wars) is only saved if the host keeps the server
+> process running or manually saves; battle loot and the defeat path
+> aren't fully wired up yet, some siege and economy behavior diverges
+> from singleplayer, and longer sessions will hit bugs and desyncs. Grab
+> the current build from the
 > [Releases page](https://github.com/Night1099/WarbandTogether/releases)
 > and report what breaks via Issues.
 
@@ -79,7 +83,7 @@ HostIP=192.168.1.20
 
 host will have to open a firewall rule as well (admin powershell)
 ```
-netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7267 profile=any
+netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7247 profile=any
 ```
 
 *(Playing over the internet without Steam? The host must forward UDP
@@ -159,9 +163,17 @@ survive disconnects.
   press **B** on the map to see open battles and jump in.
 - You get one life per battle. Casualties and XP land on your party when
   you return to the map.
-- Yes the battles kcik you back to menu at end of play this will be more seamless in future but results are applied on rejoin
+- Yes the battles kick you back to menu at end of play this will be more seamless in future but results are applied on rejoin
 - Character, inventory, party and trade screens all work — changes save
   when you close the screen.
+- You can walk around towns, villages and castles, trade with the
+  merchants standing there, enter the lord's hall, and take quests from
+  mayors and elders. Leaving a visit drops you to the server browser for
+  a moment and rejoins automatically. Towns also offer the tavern, where
+  you can hire the mercenary company and turn in wine deliveries. Tested
+  quests: caravan escort, cattle herd, wine delivery, looters, paying the
+  kidnapped girl's ransom, and night bandits; the others are in but not
+  tested yet (see the release notes).
 
 ---
 

@@ -21,7 +21,7 @@ https://github.com/Night1099/WarbandTogether/blob/main/docs/INSTALL.md
      coop.ini so an upgrade extract can't wipe your configured one)
    - Configs\*.txt, *.ini -> game root Configs\ directory
    - Modules\NativeCoop\ -> game root Modules\ directory
-   - coop_launch_all.bat, coop_*_server.bat, coop_client2.bat -> game root directory
+   - coop_launch_all*.bat, coop_*_server.bat, coop_client2.bat -> game root directory
 
 3. JOINING as a player (most installs): FIRST INSTALL ONLY, rename
    coop.ini.example to coop.ini (it already points at the host's IP).
@@ -36,11 +36,12 @@ https://github.com/Night1099/WarbandTogether/blob/main/docs/INSTALL.md
    point it at the host). Launch the servers via the .bat files from
    the game root:
    - coop_launch_all.bat [N]           -- campaign server + N battle slots (default 2, max 4) + client
+   - coop_launch_all_debug.bat [N]     -- same, every party visible on the map (no fog of war; debugging)
    - coop_campaign_server.bat          -- runs the campaign dedicated server
    - coop_battle_server_<n>.bat (0-3)  -- runs a battle server slot (run multiple for pool)
    - coop_client2.bat                  -- example client launcher
    Allow the battle-pool ports through Windows Firewall (once, as admin):
-      netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7267 profile=any
+      netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7247 profile=any
    IMPORTANT: profile=any matters. The allow rules Windows creates from
    its "allow access?" popups are often scoped to the Public profile
    only; on a Private (home) network they do nothing and remote clients
@@ -56,21 +57,27 @@ https://github.com/Night1099/WarbandTogether/blob/main/docs/INSTALL.md
 
 5. JOINING VIA STEAM INVITE: the host must have their game running with the
    Steam bridge up (SteamHost=1 in their coop.ini). Click "Join Game" on
-   their Steam friends entry -- your friend does not need to configure
-   anything in coop.ini. Once the tunnel comes up (first invite takes
-   ~5-10 seconds), a "COOP Direct" row appears in the multiplayer
-   browser's LAN tab (the browser opens on the LAN tab and auto-scans);
-   join it like any LAN server. If the browser was already open, press
-   Search to refresh. If you were already connected to a server, leave
-   it first and click the invite again.
-   Notes: your game must ALREADY be running (the invite won't launch it,
-   and Steam must be up before/within 2 minutes of the game starting).
-   The direction is fixed: the JOINER clicks Join Game on the host --
-   the host has no right-click "Invite to Game" option (that's a Steam
-   lobby feature this mod doesn't use). Invite feedback goes to
-   warband_coop.log in the game root, not the screen; if a click seems
-   to do nothing, the log says why (usually: still connected to a
-   server, or the tunnel is already up -- just join COOP Direct).
+   the host's Steam friends entry -- or on anyone already playing on
+   that server (invites chain). The host or any joiner can also
+   right-click a friend -> "Invite to Game". Your friend does not need to
+   configure anything in coop.ini. Accepting an invite auto-joins: once
+   the tunnel comes up (first invite takes ~5-10 seconds) the game
+   navigates itself into the multiplayer browser and connects to the
+   "COOP Direct" row on the LAN tab, zero clicks. If the server has a
+   [Coop] Password= and your own coop.ini does not carry the same line,
+   the auto-join stops at the browser -- type the password in the
+   browser's password box and join the COOP Direct row by hand.
+   Notes: your game AND Steam must ALREADY be running (the invite won't
+   launch the game, and Steam must be up before/within 2 minutes of the
+   game starting). If you were already connected to a server, leave it
+   first and click the invite again; in a singleplayer battle the
+   auto-join waits until the mission ends. One Steam quirk: two people
+   already in the same session lose the Join Game / Invite to Game
+   entries toward each other (they still show toward everyone else).
+   Invite feedback goes to warband_coop.log in the game root, not the
+   screen; if a click seems to do nothing, the log says why (usually:
+   still connected to a server, or the tunnel is already up -- just
+   join COOP Direct).
 
 6. SETTING A PASSWORD: the host sets one line, Password=..., in the [Coop]
    section of their coop.ini -- it applies to the campaign server and every

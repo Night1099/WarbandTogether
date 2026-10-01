@@ -51,17 +51,35 @@ static unsigned float_bits(float f) {
     return u;
 }
 
+/* Replacement for the engine's backlog send-period ceiling: the patched
+   movss reads this dword for the process lifetime, so it must be static. */
+static float g_backlog_period_s;
+
+/* The ceiling site is a re-pointed absolute operand, not a value rewrite:
+   stock == the slid address of the shared 0.1f dword, tuned == our float.
+   100 ms is the stock ceiling, so that setting leaves the operand alone. */
+static void backlog_site(nettune_site *s, unsigned disp_va, unsigned rdata_va,
+                         unsigned period_ms) {
+    g_backlog_period_s = (float)period_ms / 1000.0f;
+    s->name  = "backlog_ceiling";
+    s->addr  = (void *)REBASE(disp_va);
+    s->stock = (unsigned)REBASE(rdata_va);
+    s->tuned = (period_ms >= 100) ? s->stock : (unsigned)&g_backlog_period_s;
+}
+
 void nettune_apply(int is_battle, const char *ini_path) {
     unsigned floor_v = GetPrivateProfileIntA("NetTuning", "AimdFloor", 16000, ini_path);
     unsigned step_v  = GetPrivateProfileIntA("NetTuning", "AimdStep",   8000, ini_path);
     unsigned pmax_v  = GetPrivateProfileIntA("NetTuning", "PacketMaxSize", 1350, ini_path);
     unsigned hz_v    = GetPrivateProfileIntA("NetTuning", "SendRateHz", 30, ini_path);
+    unsigned bl_v    = GetPrivateProfileIntA("NetTuning", "BacklogPeriodMs", 33, ini_path);
     /* SendRateHz needs no clamp: it only selects between two known-good
        bit patterns below, so no ini value can write out-of-range bits. */
     floor_v = nettune_clamp("AimdFloor", floor_v, 3000, 128000);
     step_v  = nettune_clamp("AimdStep",  step_v,  1000, 32000);
     pmax_v  = nettune_clamp("PacketMaxSize", pmax_v, 576, 1450);
-    nettune_site sites[4];
+    bl_v    = nettune_clamp("BacklogPeriodMs", bl_v, 16, 100);
+    nettune_site sites[5];
     int n = 0;
 
     /* Site addresses are preferred-base VAs (see warband_addrs_wse2.h) --
@@ -74,6 +92,7 @@ void nettune_apply(int is_battle, const char *ini_path) {
         sites[n].stock = 3000;  sites[n].tuned = floor_v; n++;
         sites[n].name = "pkt_max";    sites[n].addr = (void *)REBASE(DED_NT_PKT_MAX);
         sites[n].stock = 1350;  sites[n].tuned = pmax_v;  n++;
+        backlog_site(&sites[n], DED_NT_BACKLOG_CEIL_DISP, DED_NT_BACKLOG_CEIL_RDATA, bl_v); n++;
     } else {
         sites[n].name = "aimd_step";  sites[n].addr = (void *)REBASE(CAMP_NT_AIMD_STEP);
         sites[n].stock = 1000;  sites[n].tuned = step_v;  n++;
@@ -91,6 +110,7 @@ void nettune_apply(int is_battle, const char *ini_path) {
         sites[n].stock = 0x3D088888u;
         sites[n].tuned = (hz_v >= 62) ? float_bits(0.016f) : 0x3D088888u;
         n++;
+        backlog_site(&sites[n], CAMP_NT_BACKLOG_CEIL_DISP, CAMP_NT_BACKLOG_CEIL_RDATA, bl_v); n++;
     }
     nettune_apply_table(sites, n);
 }

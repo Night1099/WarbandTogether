@@ -655,6 +655,16 @@ static __inline int mm_encounter_side(void) {
 #define ADDR_MISSION_END_TRANSITION  0x5C68BE
 #define MISSION_END_TRANSITION_SIZE  7  /* cmp dword ptr [imm32], imm8 */
 
+/* Party replication row apply in mbnetNetworkClient::receiveReplicationData
+   (0x544270, m_gameType == 4 branch). The engine turns the result of
+   rglHashVector<mbParty>::getRawIndex (0x470700) into a party pointer with
+   no miss check; -1 (a party removed by an event earlier in the same
+   packet) becomes a low unmapped address and replicatePosition faults.
+   Hook lands right after the getRawIndex call with the raw index in eax. */
+#define ADDR_REPL_PARTY_ROW_LOOKUP   0x5444BF  /* mov edx,eax ; mov eax,[esi+0x13D10] */
+#define REPL_PARTY_ROW_LOOKUP_SIZE   8
+#define ADDR_REPL_PARTY_ROW_NEXT     0x54456C  /* per-row continue: reloads esi, advances edi and the row counter */
+
 /* Talk-branch short-circuit -- party-window Talk on an MP campaign client
    starts a map conversation, an SP-only mission path whose entry-group
    source is never populated (spawnEntryGroups derefs null-4), and the
@@ -723,6 +733,21 @@ static __inline int mm_encounter_side(void) {
 #define DED_NT_AIMD_STEP     0x004B468D  /* add ecx,imm32 operand -- stock 1000 */
 #define DED_NT_AIMD_FLOOR    0x004B466D  /* mov eax,imm32 operand -- stock 3000 */
 #define DED_NT_PKT_MAX       0x004D2A9A  /* mov eax,imm32 operand -- stock 1350 */
+
+/* Backlog send-period ceiling. sendToPlayer picks a player's period with a
+   three-way branch; when the previous packet overflowed (mbnetPlayer+0x19C
+   set from !fillPacket) it uses max(m_packetSendPeriod, min(0.1f,
+   ping_ms / 0.001f * 0.7f)). The ping term is a divss where a mulss was
+   meant, so it saturates for any ping >= 1 ms and a backlogged player is
+   pinned to 10 Hz. The 0.1f dword is shared by ~40 (campaign) / ~100
+   (battle) readers incl. the battle exe's frame-dt clamp, so nettune
+   re-points the disp32 of the one movss that loads the ceiling at a
+   plugin-owned float instead of rewriting the constant. Both the operand
+   and its stock value are image-relative: REBASE() both. */
+#define CAMP_NT_BACKLOG_CEIL_DISP   0x00499D8D  /* disp32 of movss xmm1,[0.1f] @0x499D89 in sendToPlayer 0x499D30 */
+#define CAMP_NT_BACKLOG_CEIL_RDATA  0x00887BEC  /* stock disp32 target: shared .rdata 0.1f */
+#define DED_NT_BACKLOG_CEIL_DISP    0x004C56AD  /* disp32 of movss xmm1,[0.1f] @0x4C56A9 in sendToPlayer 0x4C5650 */
+#define DED_NT_BACKLOG_CEIL_RDATA   0x008BB870  /* stock disp32 target: shared .rdata 0.1f */
 
 /* CAMP_/DED_ADDR_CUR_GAME and _CUR_MISSION defined near top (feed the
    campaign/battle addr_table instances in warband_addrs_wse2.c) */

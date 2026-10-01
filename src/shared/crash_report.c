@@ -318,6 +318,7 @@ static void write_text_report(PEXCEPTION_POINTERS pExInfo, const char *path,
 static int is_fatal(DWORD code) {
     switch (code) {
     case EXCEPTION_ACCESS_VIOLATION:
+    case STATUS_HEAP_CORRUPTION:
     case EXCEPTION_STACK_OVERFLOW:
     case EXCEPTION_INT_DIVIDE_BY_ZERO:
     case EXCEPTION_ILLEGAL_INSTRUCTION:

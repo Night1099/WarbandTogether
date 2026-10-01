@@ -6,7 +6,7 @@ from header_sounds import *
 from header_music import *
 from header_items import *
 from module_constants import *
-from module_coop_mission_templates import coop_mission_templates
+from module_coop_mission_templates import coop_mission_templates, coop_visit_inventory_block, coop_visit_screen_close_trigger
 
 ####################################################################################################################
 #   Each mission-template is a tuple that contains the following fields:
@@ -34,7 +34,6 @@ from module_coop_mission_templates import coop_mission_templates
 ####################################################################################################################
 
 pilgrim_disguise = [itm_pilgrim_hood,itm_pilgrim_disguise,itm_practice_staff, itm_throwing_daggers]
-af_castle_lord = af_override_horse | af_override_weapons| af_require_civilian
 
 multiplayer_server_check_belfry_movement = (
   0, 0, 0, [],
@@ -1639,20 +1638,9 @@ mission_templates = [
         (call_script, "script_change_banners_and_chest")
       ]),
         
-      (ti_inventory_key_pressed, 0, 0,
-      [
-        (try_begin),
-          (eq, "$g_mt_mode", tcm_default),
-          (set_trigger_result,1),
-        (else_try),
-          (eq, "$g_mt_mode", tcm_disguised),
-          (display_message,"str_cant_use_inventory_disguised"),
-        (else_try),
-          (display_message, "str_cant_use_inventory_now"),
-        (try_end),
-      ], 
-      []),
-       
+      coop_visit_inventory_block,
+      coop_visit_screen_close_trigger,
+
       (ti_tab_pressed, 0, 0,
       [
         (try_begin),
@@ -1857,7 +1845,8 @@ mission_templates = [
           (call_script, "script_music_set_situation_with_culture", mtf_sit_travel),
         ]),
       (ti_before_mission_start, 0, 0, [], [(call_script, "script_change_banners_and_chest")]),
-      (ti_inventory_key_pressed, 0, 0, [(set_trigger_result,1)], []),
+      coop_visit_inventory_block,
+      coop_visit_screen_close_trigger,
       (ti_tab_pressed, 0, 0, [(try_begin),
                                 (check_quest_active, "qst_hunt_down_fugitive"),
                                 (neg|check_quest_succeeded, "qst_hunt_down_fugitive"),
@@ -3420,7 +3409,9 @@ mission_templates = [
      (45,mtef_visitor_source|mtef_team_0,af_override_horse,0,1,[]),
      (46,mtef_visitor_source|mtef_team_0,af_override_horse,0,1,[]),
      ],
-    [    
+    [
+      coop_visit_inventory_block,
+      coop_visit_screen_close_trigger,
       (ti_on_agent_spawn, 0, 0, [],
       [
         (store_trigger_param_1, ":agent_no"),
@@ -11895,7 +11886,7 @@ mission_templates = [
          (get_max_players, ":num_players"),
          (try_for_range, ":player_no", 1, ":num_players"), #0 is server so starting from 1
            (player_is_active, ":player_no"),
-           (multiplayer_send_int_to_player, ":player_no", multiplayer_event_start_death_mode),
+           (multiplayer_send_int_to_player, ":player_no", multiplayer_event_start_death_mode, 0),
          (try_end),
 
          (scene_prop_get_instance, ":pole_1_id", "spr_headquarters_pole_code_only", 0),

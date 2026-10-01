@@ -15,7 +15,7 @@ def save_strings(strings):
   ofile.close()
 
 def save_python_header():
-  ofile = open("./ID_strings.py","w")
+  ofile = open("./ID_strings.py","wb")
   for i_string in xrange(len(strings)):
     ofile.write("str_%s = %d\n"%(convert_to_identifier(strings[i_string][0]),i_string))
   ofile.write("\n\n")

@@ -11,7 +11,6 @@ add_factions fac_kingdom_5 fac_kingdom_5
 add_factions fac_kingdom_6 fac_kingdom_6
 set_randomize_factions 1
 set_team_point_limit 10
-set_steam_port 7261
 set_port 7241
 set_upload_limit 100000000
 set_add_to_game_servers_list 0

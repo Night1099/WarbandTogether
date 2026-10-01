@@ -27,15 +27,16 @@ include:
 - **Repro steps**: what you did on the campaign map / in battle, and
   what happened vs what you expected
 - **Logs**: the campaign server's plugin log (`warband_coop_host.log`
-  in the game directory) and any engine console output around the
-  failure
+  in the game directory), the client ASI log (`warband_coop.log`) and,
+  for battle problems, the battle server's `warband_coop_battle.log`,
+  plus any engine console output around the failure
 
 ## Pull requests
 
 PRs are reviewed against the flow documentation in `docs/flows/` — each
 core flow (battle pipeline, siege, XP sync, inventory sync, party-screen
-sync) has a dossier describing how it works and where it is anchored in
-the code. Please read the relevant dossier before changing a flow.
+sync, Steam tunnel, campaign server tick) has a dossier describing how it
+works and where it is anchored in the code. Please read the relevant dossier before changing a flow.
 
 This public repository is an export of a private working repository.
 Accepted PRs are hand-ported into that repository by a maintainer and

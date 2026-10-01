@@ -162,7 +162,7 @@ for %%F in (BattleServer_0.txt BattleServer_1.txt BattleServer_2.txt BattleServe
 REM ---- Launch scripts ---------------------------------------------------
 
 echo [package_mod] Copying launch scripts...
-for %%F in (coop_campaign_server.bat coop_battle_server_0.bat coop_battle_server_1.bat coop_battle_server_2.bat coop_battle_server_3.bat coop_launch_all.bat coop_client2.bat) do (
+for %%F in (coop_campaign_server.bat coop_battle_server_0.bat coop_battle_server_1.bat coop_battle_server_2.bat coop_battle_server_3.bat coop_launch_all.bat coop_launch_all_debug.bat coop_client2.bat) do (
     if not exist "%REPO_ROOT%\deploy\scripts\%%F" (
         echo MISSING: %REPO_ROOT%\deploy\scripts\%%F
         goto :error

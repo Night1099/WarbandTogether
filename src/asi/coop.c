@@ -92,7 +92,7 @@ static steam_cfg_t g_steam_cfg;
 
 /* Resolved at DLL load from variables.txt; index into g_basicGame.m_globalVariables int64 vector */
 static int  g_encountered_party_idx = -1;
-static int  g_asi_local_battle_idx  = -1;  /* $g_coop_asi_local_battle: set to 1 by module before local fight */
+static int  g_asi_local_mission_idx = -1;  /* $g_coop_asi_local_mission: kind requested by the module before change_screen_mission */
 static int  g_my_steam_acctid_idx   = -1;  /* $g_coop_my_steam_acctid: republished every 500ms by s59_writer_thread */
 static int  g_return_campaign_idx   = -1;  /* $g_coop_return_to_campaign: battle server said "battle over" -- arm the auto-join return hop */
 static int  g_steam_missing_idx     = -1;  /* $g_coop_steam_missing: republished every 500ms; 1 = host/client role can't find Steam (module shows the in-game warning) */
@@ -182,6 +182,17 @@ static void force_browser_lan_default(void) {
     forced = 1;
 }
 
+/* Arm the auto-join driver at the campaign server's address (g_host_ip:
+   g_port -- loopback while the joiner tunnel is UP). TUNNEL kind when the
+   client proxy is up so a mid-wait tunnel death aborts the join; LOCAL
+   otherwise. The FrameMove hook consumes the arm on the render thread. */
+static void arm_campaign_return(const char *why) {
+    steam_tunnel_autojoin_arm(steam_tunnel_client_is_up()
+                              ? STEAM_AUTOJOIN_TUNNEL
+                              : STEAM_AUTOJOIN_LOCAL);
+    coop_log("[autojoin] %s -- returning to campaign server\n", why);
+}
+
 static DWORD WINAPI s59_writer_thread(LPVOID param) {
     int written = 0;
     int pw_prefilled = 0;
@@ -190,9 +201,14 @@ static DWORD WINAPI s59_writer_thread(LPVOID param) {
         Sleep(500);
         flush_result_string_to_file();
         force_browser_lan_default();
-        { /* Check s0 initialized */
+        { /* Wait for the engine to construct the string registers (static
+             storage is zero until the rglString ctor runs). Test the buffer
+             pointer for NULL only: s0 moves to a heap buffer the first time a
+             script stores a 48+ char string in it and never returns to its
+             SSO slot, so an SSO-equality test would park this loop -- and
+             every publish below it -- for the rest of the process. */
             char *s0 = (char *)STRING_REG_BASE;
-            if (*(char **)(s0 + 0x04) != s0 + 0x10) continue;
+            if (*(char **)(s0 + 0x04) == NULL) continue;
         }
         steam_reaim_host_ip();
         write_string_register(59, g_host_ip);
@@ -221,21 +237,15 @@ static DWORD WINAPI s59_writer_thread(LPVOID param) {
 
         /* Post-battle return hop: the battle server's ch127 ev-55 handler
            sets $g_coop_return_to_campaign just before the end-of-battle
-           kick; arm the invite auto-join driver at the campaign address
-           (g_host_ip:g_port -- loopback while the joiner tunnel is UP).
-           Edge-latched: the global stays 1 until the engine wipes it on
-           the reconnect this very arm causes, so without the latch this
-           loop would re-arm forever. TUNNEL kind when the client proxy is
-           up so a mid-wait tunnel death aborts the join; LOCAL otherwise. */
+           kick. Edge-latched: the global stays 1 until the engine wipes it
+           on the reconnect this very arm causes, so without the latch this
+           loop would re-arm forever. */
         if (g_return_campaign_idx >= 0) {
             static int return_latched = 0;
             if (modglobals_get_int(g_return_campaign_idx, 0) == 1) {
                 if (!return_latched) {
                     return_latched = 1;
-                    steam_tunnel_autojoin_arm(steam_tunnel_client_is_up()
-                                              ? STEAM_AUTOJOIN_TUNNEL
-                                              : STEAM_AUTOJOIN_LOCAL);
-                    coop_log("[autojoin] battle over -- returning to campaign server\n");
+                    arm_campaign_return("battle over");
                 }
             } else {
                 return_latched = 0;
@@ -690,56 +700,73 @@ __declspec(naked) void create_agent_detour(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Option C — metaMission populate for coop local battle             */
+/*  Option C — metaMission populate for coop local missions           */
 /*  See patches/Warband/findings_encounters.md "Option C Impl RE"    */
 /* ------------------------------------------------------------------ */
 
 static DWORD g_sp_trampoline = 0;
 static BYTE  g_sp_saved[16]  = {0};
 
-/* Set by fixup_meta_mission_for_coop when a coop local battle starts.
-   The mission_framemove_detour restores gameType on the first frame. */
-static volatile int g_in_coop_local_battle = 0;
+/* Local mission kinds a campaign client can request through
+   $g_coop_asi_local_mission (module_constants.py coop_asi_local_mission_*). */
+#define LOCAL_MISSION_NONE   0
+#define LOCAL_MISSION_BATTLE 1
+#define LOCAL_MISSION_VISIT  2
+
+/* Nonzero while a module-requested local mission runs: setparams_pre and
+   mission_framemove_detour hold gameType at 0 inside the window dispatch,
+   mission_end_restore_gametype clears it at the mission-end transition. */
+static volatile int g_in_coop_local_mission = 0;
+static int g_local_mission_kind = LOCAL_MISSION_NONE;
 
 static void __cdecl fixup_meta_mission_for_coop(void) {
     volatile int *meta;
     int party_no;
-    int flag;
+    int kind;
+    int prev;
 
     if (*(int *)ADDR_MAP_INTERACTION_MODE != 4) return;
 
-    /* Only fire if the module explicitly set $g_coop_asi_local_battle = 1
-       right before change_screen_mission in the encounter menu. */
-    flag = modglobals_get_int(g_asi_local_battle_idx, 0);
-    if (flag != 1) return;
+    kind = modglobals_get_int(g_asi_local_mission_idx, LOCAL_MISSION_NONE);
+    if (kind != LOCAL_MISSION_BATTLE && kind != LOCAL_MISSION_VISIT) return;
 
-    meta = (volatile int *)ADDR_META_MISSION;
-    if (meta[0] != -1) return;  /* already populated */
+    /* One request per mission: clear before validating so a bad request
+       cannot linger and arm a later, unrelated mission. */
+    modglobals_set(g_asi_local_mission_idx, LOCAL_MISSION_NONE);
 
     party_no = modglobals_get_int(g_encountered_party_idx, -1);
-    if (party_no < 0) return;
+    if (party_no < 0) {
+        coop_log("metaMission fixup: kind=%d but $g_encountered_party=%d, request dropped\n",
+                 kind, party_no);
+        return;
+    }
 
-    /* Clear the flag so this only fires once */
-    modglobals_set(g_asi_local_battle_idx, 0);
-
+    /* The request owns the whole record. setParams copies every field from
+       here and mbMission::start/frameMove never read it again, so a prior
+       encounter left in place would be spawned as this mission's parties. */
+    meta = (volatile int *)ADDR_META_MISSION;
+    prev = meta[0];
     meta[0] = party_no;                                 /* +0x00 encounteredParties[0] */
     meta[1] = -1;                                       /* +0x04 encounteredParties[1] */
     *(int *)((BYTE *)meta + 0x0C) = 0;                  /* m_type (0 = field)          */
     *(int *)((BYTE *)meta + 0x18) = 0;                  /* m_mainPartySide             */
-    *(int *)((BYTE *)meta + 0x24) = 1;                  /* m_enemySide (1=opposing team) */
+    /* A hostile encounter puts the encountered party on the opposing side so
+       party-sourced entries spawn as enemies. A visit mirrors the record
+       mbMetaMission::startMapEvent writes for a peaceful map encounter. */
+    *(int *)((BYTE *)meta + 0x24) = (kind == LOCAL_MISSION_BATTLE) ? 1 : 0;  /* m_enemySide */
     *(int *)((BYTE *)meta + 0x30) = 1;                  /* m_inEvent                   */
     *(int *)((BYTE *)meta + 0x44) = 1;                  /* m_enemiesPresent            */
 
-    coop_log("metaMission fixup: encountered_party=%d written to 0x%X\n",
-             party_no, ADDR_META_MISSION);
+    coop_log("metaMission fixup: kind=%d encountered_party=%d written to 0x%X (prior meta[0]=%d)\n",
+             kind, party_no, ADDR_META_MISSION, prev);
 
-    /* Set the flag.  gameType is NOT changed here — it stays at 4 so
-       network listen/send in mbCoreGame::frameMove keep working.
-       gameType=0 is set in the setParams prologue detour (which runs
-       inside the window dispatch, after network listen) and restored
-       in the frameMove cleanup (before network send). */
-    g_in_coop_local_battle = 1;
-    coop_log("local battle flag set (gameType stays 4 until window dispatch)\n");
+    /* gameType is NOT changed here -- it stays at 4 so network listen/send
+       in mbCoreGame::frameMove keep working. gameType=0 is set in the
+       setParams prologue detour (inside the window dispatch, after network
+       listen) and restored in the frameMove cleanup (before network send). */
+    g_in_coop_local_mission = 1;
+    g_local_mission_kind = kind;
+    coop_log("local mission flag set (gameType stays 4 until window dispatch)\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -748,7 +775,7 @@ static void __cdecl fixup_meta_mission_for_coop(void) {
 /*  multiplayer_send_int_to_server only enqueues into slot-0 m_events; */
 /*  the per-frame pump (mbCoreGame::frameMove) only services the queue */
 /*  while gameType is a client type (1/4). Forcing gameType=0 below    */
-/*  silences that pump for the whole local battle, so any event the    */
+/*  silences that pump for the whole local mission, so any event the   */
 /*  encounter menu queued (e.g. start_local_fight) would be stranded   */
 /*  and never reach the campaign server. Transmit it now, before the   */
 /*  flip, via the narrow client send (no inbound work, no gameType     */
@@ -775,9 +802,9 @@ static void coop_flush_client_events(void) {
 }
 
 static void __cdecl setparams_pre(void) {
-    g_in_coop_local_battle = 0;
+    g_in_coop_local_mission = 0;
     fixup_meta_mission_for_coop();
-    if (g_in_coop_local_battle) {
+    if (g_in_coop_local_mission) {
         coop_flush_client_events();
         *(int *)ADDR_MAP_INTERACTION_MODE = 0;
     }
@@ -797,7 +824,7 @@ __declspec(naked) void setparams_prologue_detour(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  mission_frameMove — per-frame gameType flip for coop local battles */
+/*  mission_frameMove — per-frame gameType flip for coop local missions */
 /*  Sets gameType=0 during frameMove so all SP subsystems work, then  */
 /*  restores to 4 on return so network listen/send (which run outside */
 /*  frameMove in mbCoreGame::frameMove) see gameType=4.               */
@@ -808,11 +835,11 @@ static BYTE  g_mfm_saved[16]  = {0};
 static DWORD g_mfm_saved_retaddr = 0;
 
 static void __cdecl mfm_pre(void) {
-    if (*(int *)ADDR_MAP_INTERACTION_MODE == 4 && !g_in_coop_local_battle) {
+    if (*(int *)ADDR_MAP_INTERACTION_MODE == 4 && !g_in_coop_local_mission) {
         flush_result_string_to_file();
         check_pending_local_result();
     }
-    if (g_in_coop_local_battle) {
+    if (g_in_coop_local_mission) {
         *(int *)ADDR_MAP_INTERACTION_MODE = 0;
     }
 }
@@ -827,7 +854,7 @@ __declspec(naked) void mission_framemove_detour(void) {
         pop  ecx
         pop  eax
 
-        cmp dword ptr [g_in_coop_local_battle], 0
+        cmp dword ptr [g_in_coop_local_mission], 0
         je  mfm_passthrough
 
         /* Swap return address so we can restore gameType after return */
@@ -919,10 +946,18 @@ static void check_pending_local_result(void) {
 }
 
 static void __cdecl mission_end_restore_gametype(void) {
-    if (!g_in_coop_local_battle) return;
-    g_in_coop_local_battle = 0;
+    if (!g_in_coop_local_mission) return;
+    g_in_coop_local_mission = 0;
     *(int *)ADDR_MAP_INTERACTION_MODE = 4;
     coop_log("mission-end transition: gameType restored to 4\n");
+    /* The teardown epilogue this hook sits in drops the campaign connection
+       for any mission ended at gameType 4, so the client lands in the
+       server browser. A visit has no debrief to show; rejoin straight
+       away. A local battle keeps its debrief menu and the manual rejoin
+       (its result travels by file on the next browser visit). */
+    if (g_local_mission_kind == LOCAL_MISSION_VISIT)
+        arm_campaign_return("visit over");
+    g_local_mission_kind = LOCAL_MISSION_NONE;
 }
 
 __declspec(naked) void mission_end_transition_detour(void) {
@@ -938,6 +973,45 @@ __declspec(naked) void mission_end_transition_detour(void) {
         jmp  [g_met_trampoline]
     }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Replication row guard at ADDR_REPL_PARTY_ROW_LOOKUP               */
+/*  receivePacket applies the packet's events (party removal among    */
+/*  them) before its replication rows, and the client replication     */
+/*  table never drops a removed party's rows. A row for that party    */
+/*  then reaches the pointer math with getRawIndex() == -1. Skip the  */
+/*  row instead; the continue target only reads ebp locals/edi/ebx.  */
+/* ------------------------------------------------------------------ */
+
+static DWORD g_rpl_trampoline = 0;
+static BYTE  g_rpl_saved[16]  = {0};
+static const BYTE g_rpl_expected[REPL_PARTY_ROW_LOOKUP_SIZE] =
+    {0x8B, 0xD0, 0x8B, 0x86, 0x10, 0x3D, 0x01, 0x00};
+
+static void __cdecl replication_row_missing_party(int row_index) {
+    coop_log("replication row %d for missing party %d skipped\n",
+             row_index, row_index / 4);
+}
+
+__declspec(naked) void replication_party_lookup_detour(void) {
+    __asm {
+        cmp  eax, -1
+        jne  rpl_have_party
+        push ecx
+        push edx
+        push dword ptr [ebp-0x10]      /* row index local of receiveReplicationData */
+        call replication_row_missing_party
+        add  esp, 4
+        pop  edx
+        pop  ecx
+        mov  eax, 0x54456C             /* = ADDR_REPL_PARTY_ROW_NEXT -- keep in sync with warband_addrs_wse2.h */
+        jmp  eax
+    rpl_have_party:
+        jmp  [g_rpl_trampoline]
+    }
+}
+
+typedef char assert_repl_row_next_addr[(ADDR_REPL_PARTY_ROW_NEXT == 0x54456C) ? 1 : -1];
 
 /* ------------------------------------------------------------------ */
 /*  Talk-branch redirect in mbPartyWindow::frameMove                   */
@@ -1058,7 +1132,7 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
             vars_path[MAX_PATH-1] = 0;
 
             names[n] = "g_encountered_party";          dest[n] = &g_encountered_party_idx; n++;
-            names[n] = "g_coop_asi_local_battle";      dest[n] = &g_asi_local_battle_idx;  n++;
+            names[n] = "g_coop_asi_local_mission";     dest[n] = &g_asi_local_mission_idx; n++;
             names[n] = "g_coop_pending_local_result";  dest[n] = &g_pending_result_idx;    n++;
             names[n] = "$g_coop_pending_win_loss";     dest[n] = &g_pending_win_loss_idx;  n++;
             names[n] = "$g_coop_pending_xp";           dest[n] = &g_pending_xp_idx;        n++;
@@ -1269,7 +1343,7 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         coop_log("mbMission::setParams hooked at 0x%X (trampoline=0x%X)\n",
                  ADDR_SET_PARAMS, g_sp_trampoline);
 
-        /* mission_frameMove: per-frame gameType flip for local battles.
+        /* mission_frameMove: per-frame gameType flip for local missions.
            Sets gameType=0 during frameMove (inside window dispatch),
            restores to 4 after (before network send/manager). */
         hook_install(ADDR_MISSION_FRAMEMOVE, mission_framemove_detour,
@@ -1285,6 +1359,14 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
                      MISSION_END_TRANSITION_SIZE, g_met_saved, &g_met_trampoline);
         coop_log("mission-end transition hooked at 0x%X (trampoline=0x%X)\n",
                  ADDR_MISSION_END_TRANSITION, g_met_trampoline);
+
+        /* Party replication rows for a party the client no longer has:
+           skip instead of dereferencing a raw index of -1. */
+        if (hook_install_verified(ADDR_REPL_PARTY_ROW_LOOKUP, replication_party_lookup_detour,
+                                  REPL_PARTY_ROW_LOOKUP_SIZE, g_rpl_expected,
+                                  g_rpl_saved, &g_rpl_trampoline))
+            coop_log("replication party-row lookup guarded at 0x%X (trampoline=0x%X)\n",
+                     ADDR_REPL_PARTY_ROW_LOOKUP, g_rpl_trampoline);
 
         /* Talk-branch short-circuit: party-window Talk crashes MP clients
            (SP-only conversation mission + scene-less window transition).

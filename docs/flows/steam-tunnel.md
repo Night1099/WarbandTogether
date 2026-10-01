@@ -2,7 +2,14 @@
 
 **Status:** AUDITED (new subsystem — no native counterpart, so the audit
 table records engine-interaction ground truth instead of ours-vs-native)
-**Validated against commit:** `5ccf502` (phase-5 chain/lobby invites +
+**Validated against commit:** `7161f85` (doc refresh 2026-09-21: all
+`steam_tunnel.c` / `steam_flat.c` anchors re-verified unchanged since
+`2923381`; narrative adds the auto-join driver's reuse as the campaign
+return hop after a local visit (`4676755`, runtime-verified 2026-09-19)
+and a dedicated battle; runtime-verified tunnel behavior unchanged since
+`09da2f7`). Prior stamp `2923381` (line anchors re-verified in full
+static doc audit 2026-08-30; runtime-verified behavior unchanged since
+`5ccf502`) -- prior stamp `5ccf502` (phase-5 chain/lobby invites +
 auto-join; all runtime gates 1-12 passed 2026-08-23/24 incl. LAN
 regression, chain invite, host + joiner right-click invites, ini-joiner
 lobby join, host-shutdown cleanup, password gates, and the auto-join
@@ -103,8 +110,8 @@ JOINER game (engine mbnet)          HOST game client (bridge)      HOST dedicate
   `steam_drain_invite` on the tunnel thread parses (`steam_invite_parse`)
   and decides.
 - **Refusals (all log-only — RE Q10 found no thread-safe on-screen
-  print):** malformed string; this machine is the host; engine
-  in-session (`ADDR_NET_RUN_FLAG` && `ADDR_NET_PROGRESS_STATE`==7 &&
+  print):** malformed string; this machine hosts a different server than
+  the invite targets; engine in-session (`ADDR_NET_RUN_FLAG` && `ADDR_NET_PROGRESS_STATE`==7 &&
   `ADDR_MAP_INTERACTION_MODE`==1 — "leave the current server first");
   tunnel to that host already up ("join via the MP browser" — the
   expected outcome for an ini-configured client clicking Join Game).
@@ -130,7 +137,14 @@ JOINER game (engine mbnet)          HOST game client (bridge)      HOST dedicate
   (engine-consumed / 60 s timeout / tunnel down — mandatory because the
   7-NOP 3415 patch removed the initial menu's native clear; verified no
   stale-flag bounce, gate 11). With no `[Steam]` keys the hook idles
-  (gate 12).
+  (gate 12). The same driver is the ASI's **campaign return hop**: any
+  mission a campaign client ends at gameType 4 drops the connection, so
+  `arm_campaign_return` (`coop.c:189`) arms the hook at the campaign
+  server's address -- TUNNEL kind while the client proxy is UP (a
+  mid-wait tunnel death aborts the join), LOCAL otherwise -- after a
+  dedicated battle (ch127 ev 55, `e7eb400`) and after a local visit
+  (`4676755`, runtime-verified 2026-09-19). No `[Steam]` keys needed:
+  the LOCAL kind runs on plain LAN.
 - The whole invite surface is one all-or-nothing optional export group
   (Friends v017 + SteamUser v023 + Register/Unregister; phase 5 folds in
   the matchmaking accessor `SteamAPI_SteamMatchmaking_v009` + lobby
@@ -142,10 +156,12 @@ wire (ch125/49/126/127) or the Steam connect string (`:pw` is a flag):
 
 ```
 coop.ini [Coop] Password=  (host game dir, max 47 chars)
-  -> CoopWSEPlugin coop_load_ini -> WSE/<module>/coop_server_cfg.wsedict
-     {server_password} (write_server_cfg_dict, BOTH dedicated
-     personalities, ~+3 s: winmm loader sleeps 3 s before plugin load)
-  -> module coop_apply_server_password: 0.5 s campaign trigger + battle
+  -> CoopWSEPlugin coop_load_ini -> WSE/<module>/"coop server cfg <campaign|battle>.wsedict"
+     {"server password"} (write_server_cfg_dict, BOTH dedicated
+     personalities, ~+3 s: winmm loader sleeps 3 s before plugin load;
+     spaces, not underscores -- the module's @strings lose their
+     underscores at load)
+  -> module coop_apply_server_cfg: 0.5 s campaign trigger + battle
      template start hook retry until dict_load_file succeeds (latch
      AFTER load -- an early tick must not disarm), then
      server_set_password
@@ -167,16 +183,16 @@ the direct-connect arm.
 
 | # | Step | File | Line | Symbol |
 |---|------|------|------|--------|
-| 1 | Flat-API resolver (GetProcAddress off loaded `steam_api_wse2.dll`, fail-closed, layout asserts) | `src/asi/steam_flat.c` | 1 | `steam_flat_resolve` |
-| 2 | Tunnel thread entry + role loop + auto-recover | `src/asi/steam_tunnel.c` | 626 | `steam_tunnel_thread` |
-| 3 | Steam-ready wait (retries export resolution; not-ready never fatal) | `src/asi/steam_tunnel.c` | 437 | `steam_wait_steam_ready` |
-| 4 | Host bridge session (5 listen vports -> loopback sockets) | `src/asi/steam_tunnel.c` | 988 | `steam_host_run` |
-| 5 | Client proxy session (real-port listeners, lazy ConnectP2P) | `src/asi/steam_tunnel.c` | 1081 | `steam_client_run` |
-| 6 | Per-vport connect (identity `m_cbSize` MUST be 8) | `src/asi/steam_tunnel.c` | 942 | `steam_client_connect_vport` |
-| 7 | Callback enqueue (any-thread) | `src/asi/steam_tunnel.c` | 252 | `steam_on_status_changed` |
-| 8 | 20 Hz RunCallbacks pump | `src/asi/steam_tunnel.c` | 751 | `steam_pump_callbacks` |
-| 9 | SEH-guarded Steam-side teardown | `src/asi/steam_tunnel.c` | 512 | `steam_steamside_cleanup` |
-| 10 | Proxy state for coop.c (re-aim + inject gate) | `src/asi/steam_tunnel.c` | 204 | `steam_tunnel_client_state` |
+| 1 | Flat-API resolver (GetProcAddress off loaded `steam_api_wse2.dll`, fail-closed, layout asserts) | `src/asi/steam_flat.c` | 18 | `steam_flat_resolve` |
+| 2 | Tunnel thread entry + role loop + auto-recover | `src/asi/steam_tunnel.c` | 1041 | `steam_tunnel_thread` |
+| 3 | Steam-ready wait (retries export resolution; not-ready never fatal) | `src/asi/steam_tunnel.c` | 779 | `steam_wait_steam_ready` |
+| 4 | Host bridge session (5 listen vports -> loopback sockets) | `src/asi/steam_tunnel.c` | 1433 | `steam_host_run` |
+| 5 | Client proxy session (real-port listeners, lazy ConnectP2P) | `src/asi/steam_tunnel.c` | 1542 | `steam_client_run` |
+| 6 | Per-vport connect (identity `m_cbSize` MUST be 8) | `src/asi/steam_tunnel.c` | 1357 | `steam_client_connect_vport` |
+| 7 | Callback enqueue (any-thread) | `src/asi/steam_tunnel.c` | 282 | `steam_on_status_changed` |
+| 8 | 20 Hz RunCallbacks pump | `src/asi/steam_tunnel.c` | 1166 | `steam_pump_callbacks` |
+| 9 | SEH-guarded Steam-side teardown | `src/asi/steam_tunnel.c` | 881 | `steam_steamside_cleanup` |
+| 10 | Proxy state for coop.c (re-aim + inject gate) | `src/asi/steam_tunnel.c` | 234 | `steam_tunnel_client_state` |
 
 ## State & events
 

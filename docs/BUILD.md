@@ -19,13 +19,24 @@ Always run a full build. Partial builds cause "Invalid Quick String ID" errors a
 
 ```cmd
 cd wse2work\Native-Coop-master
-build_module.bat
+.\build_module.bat
 ```
 
-One-liner that works around both quirks below (from any shell, via cmd):
+`build_module.bat` runs `run_module_build.py`, which executes the 29
+`process_*.py` steps in order and stops at the first step that exits
+non-zero or prints an `ERROR` line or a traceback (several legacy steps
+print `ERROR` and still exit 0). The bat's exit code is 1 on failure, 0 on
+success, so it is safe to chain.
+
+The build also regenerates the tracked `ID_*.py` tables in the source
+directory (written in binary mode so they keep LF endings; a build after
+an unchanged source leaves them untouched). Commit them together with
+the module change that altered them.
+
+One-liner that works around the environment quirks below (from any shell, via cmd):
 
 ```cmd
-cmd /c "cd /d <repo>\wse2work\Native-Coop-master && set PATH=C:\Python27;%PATH% && .\build_module.bat <nul"
+cmd /c "cd /d <repo>\wse2work\Native-Coop-master && set PATH=C:\Python27;%PATH% && .\build_module.bat"
 ```
 
 Environment quirks:
@@ -37,8 +48,6 @@ Environment quirks:
 - **`python` on PATH must be Python 2.7** — with Python 3 first, every
   step dies with `SyntaxError: Missing parentheses in call to 'print'`.
   Prepend `C:\Python27` to PATH for the invocation (as above).
-- The bat ends with `pause` — the `<nul` redirect keeps it from blocking
-  in non-interactive shells.
 
 Alternatively, run each step explicitly with the 2.7 interpreter:
 
@@ -99,6 +108,7 @@ cp deploy/coop.ini                  "<game>/"
 From the game directory, either start everything at once:
 
 - `coop_launch_all.bat [N]` — campaign server + N battle-server slots (default 2, max 4) + a client
+- `coop_launch_all_debug.bat [N]` — the same, with every party map-visible on the campaign server (no fog of war). It sets `COOP_DEBUG_REVEAL=1` for the campaign server; the host plugin writes it into `WSE\NativeCoop\coop server cfg campaign.wsedict` and the module's reveal trigger reads it. The normal launcher leaves it off.
 
 or start each process individually:
 
@@ -110,13 +120,15 @@ or start each process individually:
 
 ## Building the Client ASI (warband_coop.asi)
 
-The client ASI injects the campaign server into the MP browser (Direct Connect from `coop.ini`), hooks native screen-close events, and writes the battle-server address into string register s59. It is loaded by the dinput8 ASI loader on the **client** (`mb_warband_wse2.exe`) only.
+The client ASI injects the campaign server into the MP browser (Direct Connect from `coop.ini`), hooks native screen-close events, and writes the battle-server address into string register s59, and mirrors the join password into s57 for module_simple_triggers.py's deferred battle connect. It is loaded by the dinput8 ASI loader on the **client** (`mb_warband_wse2.exe`) only.
 
 ### Source Files
 
 ```
 src/asi/
   coop.c                  # Browser hook, server injection, s59 writer
+  steam_flat.c/h           # Steam API flat-vtable shim (MSVC callback layout)
+  steam_tunnel.c/h         # Steam P2P tunnel thread (host bridge / joiner proxy / invites)
 src/shared/
   hook.c/h                # Engine memory hooks
   modglobals.c/h          # Module-global (variables.txt) name resolution
@@ -159,6 +171,8 @@ src/shared/
   hook.c/h                # Engine memory hooks
   crash_report.c/h        # Crash reporting + ring buffer
   warband_addrs_wse2.c/h  # Engine address tables (DED_*/CAMP_* for dedicated binaries)
+  nettune.c/h              # Runtime net-tuning patcher ([NetTuning] AIMD/packet/send-rate knobs)
+  xp.c/h                   # XP accounting helpers
 enet/                     # ENet library source (vendored)
 ```
 
@@ -184,6 +198,16 @@ Produces `bin\winmm.dll`.
 
 ---
 
+## Building the C Test Runner
+
+```cmd
+build\build_tests.bat
+```
+
+Produces `bin\coop_tests.exe`, a plain-assert runner over `tests/c/`. Invoked through `pytest tests/test_c_harness.py` so pytest stays the single test entry point. The test sources and this script are part of the private workbench only; they are not in the public export.
+
+---
+
 ## Deploy (C Artifacts)
 
 Automatic — every successful C build ends with a call to `build\deploy.bat`, which:
@@ -194,6 +218,8 @@ Automatic — every successful C build ends with a call to `build\deploy.bat`, w
 - installs `coop.ini` from `deploy/coop.ini` if it doesn't already exist
 
 Run `build\deploy.bat` standalone to deploy without rebuilding. If the game or a server is running, the locked file is skipped with a WARN — close them and rerun.
+
+`build\deploy.bat` also deploys `lua\main.lua` to `Modules/COOP/lua/` if present, and finishes by invoking `build\package_mod.bat` to produce a shareable client zip (packaging failure does not fail the deploy).
 
 ## coop.ini
 
@@ -207,7 +233,7 @@ BattlePort=7241
 Module=NativeCoop
 ```
 
-There is no mode key — server role comes from the exe name. On each **client** machine, set `HostIP` to the campaign server's IP: battle joins build their address from it, and the `127.0.0.1` default silently bounces battle joins back to the MP menu.
+There is no mode key — server role comes from the exe name. On each **client** machine, set `HostIP` to the campaign server's IP: battle joins build their address from it, and the `127.0.0.1` default silently bounces battle joins back to the MP menu. The template also carries `Password=` (pool-wide join password), the `[NetTuning]` knobs read by the dedicated exes, and the `[Steam]` tunnel keys read by the client ASI — see the `coop.ini` section of `README.md` for the full key list.
 
 ## Common Errors
 
@@ -226,9 +252,9 @@ wse2work/Native-Coop-master/
 ├── module_info.py              # export_dir → game module folder (edit this)
 ├── module_constants.py         # All constants including coop battle
 ├── module_scripts.py           # Vanilla campaign scripts + network forwarding arms (51k lines)
-├── module_coop_scripts.py      # All coop scripts: persistence, dispatchers, battle pipeline (9.7k lines)
-├── module_coop_mission_templates.py  # coop_battle mission template (8k lines)
-├── module_coop_presentations.py      # Coop UI presentations (4.5k lines)
+├── module_coop_scripts.py      # All coop scripts: persistence, dispatchers, battle pipeline (14.8k lines)
+├── module_coop_mission_templates.py  # coop_battle mission template (8.5k lines)
+├── module_coop_presentations.py      # Coop UI presentations (4.2k lines)
 ├── module_mission_templates.py # Main templates, imports coop templates
 ├── module_presentations.py     # Main presentations, imports coop presentations
 ├── module_game_menus.py        # Encounter menu with auto-connect

@@ -55,6 +55,7 @@ static int         g_port = 7240;
 static char        g_host_ip[64] = "127.0.0.1";
 static char        g_module_name[64] = "NativeCoop";
 static char        g_server_password[64] = "";
+static int         g_debug_reveal = 0;   /* COOP_DEBUG_REVEAL env: campaign server marks every party map-visible */
 static char        g_ini_path[MAX_PATH];  /* stashed for nettune_apply, called once g_log is open */
 
 /* ------------------------------------------------------------------ */
@@ -140,8 +141,10 @@ __declspec(naked) void framemove_detour(void) {
 DWORD g_aslr_slide = 0;
 
 /* --- IPC thread: hosts the battle-server ENet listener and republishes
-   the slots-online mask. The framemove hook also polls IPC, but this
-   thread guarantees liveness even when frames stall (loading screens). --- */
+   the slots-online mask. It is the SOLE owner of the ENet host: enet_host_service
+   mutates peer/ack lists with no internal locking, so polling from the
+   framemove hook as well double-frees under load (heap corruption 0xC0000374).
+   Running here also guarantees liveness when frames stall (loading screens). --- */
 static HANDLE g_poll_thread = NULL;
 static volatile LONG g_poll_running = 0;
 
@@ -188,7 +191,6 @@ static void stop_ipc_thread(void) {
 }
 
 static void coop_on_frame(void) {
-    bnet_poll();
     crash_heartbeat();
 }
 
@@ -287,10 +289,16 @@ static void coop_load_ini(const char *dll_dir) {
         coop_log("battle slot: %d (COOP_BATTLE_SLOT env)\n", g_battle_slot);
     }
 
-    coop_log("config: mode=%s port=%d host=%s module=%s password=%s\n",
+    if (g_coop_mode == COOP_HOST) {
+        char reveal_str[8];
+        if (GetEnvironmentVariableA("COOP_DEBUG_REVEAL", reveal_str, sizeof(reveal_str)) > 0)
+            g_debug_reveal = atoi(reveal_str) != 0;
+    }
+
+    coop_log("config: mode=%s port=%d host=%s module=%s password=%s debug_reveal=%d\n",
              g_coop_mode == COOP_HOST ? "host" : "battle",
              g_port, g_host_ip, g_module_name,
-             g_server_password[0] ? "set" : "none");
+             g_server_password[0] ? "set" : "none", g_debug_reveal);
 }
 
 /* ------------------------------------------------------------------ */
@@ -358,17 +366,28 @@ static void get_wse_dict_dir(char *out, int out_size) {
 /*  Server config dict writing                                        */
 /* ------------------------------------------------------------------ */
 
+/* One file per personality: every server in a pool writes its own
+ * environment (debug_reveal is campaign-only), so a shared file would let
+ * the last writer decide the setting another process reads.
+ *
+ * The file name and keys are spelled the way the engine resolves the
+ * module's quick strings: every '_' in an "@name" string becomes ' ' when
+ * quick_strings.txt is loaded, so coop_apply_server_cfg opens
+ * "coop server cfg campaign" and reads "server password". */
 static void write_server_cfg_dict(void) {
     char dir[MAX_PATH], path[MAX_PATH];
+    const char *name = g_coop_mode == COOP_HOST ? "coop server cfg campaign"
+                                                : "coop server cfg battle";
     wsedict_t *d;
     get_wse_dict_dir(dir, sizeof(dir));
-    _snprintf(path, sizeof(path), "%scoop_server_cfg.wsedict", dir);
+    _snprintf(path, sizeof(path), "%s%s.wsedict", dir, name);
     d = wsedict_create();
     if (!d) return;
-    wsedict_set_str(d, "server_password", g_server_password);
+    wsedict_set_str(d, "server password", g_server_password);
+    wsedict_set_int(d, "debug reveal", g_debug_reveal);
     if (wsedict_save(d, path) == 0)
-        coop_log("server cfg dict written (%s, password=%s)\n",
-                 path, g_server_password[0] ? "set" : "none");
+        coop_log("server cfg dict written (%s, password=%s, debug_reveal=%d)\n",
+                 path, g_server_password[0] ? "set" : "none", g_debug_reveal);
     else
         coop_log("server cfg dict WRITE FAILED (%s)\n", path);
     wsedict_free(d);

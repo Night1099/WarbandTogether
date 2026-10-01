@@ -217,6 +217,49 @@ multiplayer_event_multiplayer_campaign_server_event_battle_rejected    = 44
 # battle-chooser entry for that slot so a finished battle stops being listed (45)
 multiplayer_event_multiplayer_campaign_server_event_battle_slot_closed  = 45
 
+# 46-51 reserved by docs/superpowers/specs/2026-09-07-notes-world-sync-design.md.
+# Visit roster push: one visit_npc per (kind, entry, troop), then roster_done
+# (hall scene id, tavern scene id; -1 where the center has none; the night
+# ambush armed for this player: troop (bits 0-11) | count A (12-15) | count B
+# (16-19) | count C (20-23), 0 = none).
+multiplayer_event_multiplayer_campaign_server_event_visit_npc         = 52
+multiplayer_event_multiplayer_campaign_server_event_visit_roster_done = 53
+# In-scene trade stock, pushed with the roster: (merchant troop, slot, item,
+# imod) into the client's copy of the real merchant troop; slot -1 clears.
+multiplayer_event_multiplayer_campaign_server_event_visit_merchant_slot = 54
+# Relation sync: one relation per event. int1 = relation id (troop id, or
+# -1 - center party id), int2 = value + 100, int3 = met | (delta + 128) << 1;
+# a non-zero delta makes the client print native's relation message.
+multiplayer_event_multiplayer_campaign_server_event_relation_set    = 55
+# Lord/lady reputation types, 12 troops per event: int1 = first troop,
+# int2 = troops 0-5 and int3 = troops 6-11 at 5 bits each (coop_rep_pack_*).
+multiplayer_event_multiplayer_campaign_server_event_lord_reputation = 56
+# Quest sync (server -> client, always one player). quest_params precedes
+# the offer or state it belongs to.
+#   57 quest_offer:  int1 = giver troop, int2 = quest_no (-1 = no offer),
+#                    int3 = target center+1 (bits 0-9) | giver center+1 (bits 10-19)
+#   58 quest_state:  int1 = quest_no, int2 = status (bits 0-3) | giver+1 (bits 4-15)
+#                    | giver center+1 (bits 16-25), int3 = target center+1 (bits 0-9)
+#                    | current_state (bits 10-17) | looter count (bits 18-25)
+#   59 quest_params: int1 = quest_no, int2 = gold reward (bits 0-15) | amount
+#                    (bits 16-30), int3 = item+1 (bits 0-11) | remaining days (bits 12-19)
+#   60 own_party_position: int1 = x, int2 = y (fixed point 1000) of the
+#                    player's own party, pushed at hydrate right after the saved
+#                    map position is restored. 61 free.
+multiplayer_event_multiplayer_campaign_server_event_quest_offer  = 57
+multiplayer_event_multiplayer_campaign_server_event_quest_state  = 58
+multiplayer_event_multiplayer_campaign_server_event_quest_params = 59
+multiplayer_event_multiplayer_campaign_server_event_own_party_position = 60
+# Tavern occupants, one event per role: int1 = coop_tavern_role_*,
+# int2 = troop, int3 = role-specific aux. Pushed with the visit roster for
+# towns only, just before roster_done.
+multiplayer_event_multiplayer_campaign_server_event_tavern_slot = 61
+# Persuade lords to make peace: int1 = quest_no, int2 = lord 1 (native's
+# target troop) + 1 (bits 0-11) | its faction (12-19) | done (20) | locked
+# out of persuasion (21), int3 = the same for lord 2 (the object troop).
+# Sent right before the offer (57) or state (58) it belongs to. 63 free.
+multiplayer_event_multiplayer_campaign_server_event_quest_lords = 62
+
 #multiplayer campaign client events
 multiplayer_event_multiplayer_campaign_leave_encounter = 0
 multiplayer_event_multiplayer_campaign_start_battle = 1
@@ -239,23 +282,67 @@ multiplayer_event_multiplayer_campaign_sync_pools    = 12
 multiplayer_event_multiplayer_campaign_request_inv_sync    = 13  # re-added for B3: inventory-window open requests an authoritative baseline re-push
 multiplayer_event_multiplayer_campaign_inv_change           = 14
 multiplayer_event_multiplayer_campaign_inv_sync_back_done   = 15
-# Center/trade/recruit client events (18-23)
-multiplayer_event_multiplayer_campaign_enter_center         = 18
+# Center/trade/recruit client events (19-23; 18 free)
 multiplayer_event_multiplayer_campaign_leave_center         = 19
 multiplayer_event_multiplayer_campaign_request_trade        = 20
-multiplayer_event_multiplayer_campaign_trade_change         = 21
+multiplayer_event_multiplayer_campaign_trade_change         = 21  # (merchant_slot, item, imod | (dest_slot+1) << 8): dest = where the client dropped a bought item
 multiplayer_event_multiplayer_campaign_trade_done           = 22
 multiplayer_event_multiplayer_campaign_request_recruit      = 23
-# Local SP encounter client events (16-17 free, 24-25 new)
+# Local SP encounter client events (16-17, 24; 25 free)
 multiplayer_event_multiplayer_campaign_start_local_fight    = 16
 multiplayer_event_multiplayer_campaign_local_fight_result   = 17
 multiplayer_event_multiplayer_campaign_start_local_visit    = 24
-multiplayer_event_multiplayer_campaign_local_visit_done     = 25
 # Coop siege request: player assaults a hostile center on the battle server (26)
 multiplayer_event_multiplayer_campaign_request_siege        = 26
 # Local siege: player assaults the locked center locally vs AI; server replies
 # with start_siege_local (27)
 multiplayer_event_multiplayer_campaign_request_siege_local  = 27
+# In-scene trade replayed from the client outbox after the rejoin: names the
+# merchant for the trade_change/trade_done batch that follows (28)
+multiplayer_event_multiplayer_campaign_visit_trade_begin    = 28
+# Relation sync: a client-side native relation change reported as
+# (relation id, applied delta) -- outbox in a visit, live send on the map;
+# npc_met marks a first meeting (troop).
+# Quest sync, always through the client outbox (queued inside a visit,
+# replayed after the rejoin): quest_accept = (giver troop, quest_no),
+# quest_claim = (quest_no, choice: the player's answer where native offers
+# two, 0 otherwise).
+multiplayer_event_multiplayer_campaign_quest_accept         = 29
+multiplayer_event_multiplayer_campaign_quest_claim          = 30
+multiplayer_event_multiplayer_campaign_relation_delta       = 31
+multiplayer_event_multiplayer_campaign_npc_met              = 32
+# Tavern transactions. A visit has no socket, so each of these is queued in
+# the client outbox and replayed on the rejoin; the center lock is already
+# released by then, so every handler re-validates the center it is told.
+#   33 tavern_hire_mercenary: a = troop, b = count, c = center
+multiplayer_event_multiplayer_campaign_tavern_hire_mercenary = 33
+#   34 tavern_recruit_companion: a = companion troop, b = center
+multiplayer_event_multiplayer_campaign_tavern_recruit_companion = 34
+#   35 tavern_ransom_companion: a = companion troop, b = center
+# Selling prisoners to the broker has no event: change_screen_trade_prisoners
+# takes no party and is bound to the engine's main party, which on a coop
+# client is not the player's -- see docs/DEFERRED.md.
+multiplayer_event_multiplayer_campaign_tavern_ransom_companion = 35
+
+# Kidnapped girl: pay the ransom from the map encounter menu (live, the
+# player is on the map). No params; the server re-validates everything.
+multiplayer_event_multiplayer_campaign_quest_pay_ransom      = 36
+
+# Night ambush, outbox only (the ambush is a visit mission): a = center,
+# b = 1 won / 0 lost. The server pays from the ambush it armed, never from
+# client numbers.
+multiplayer_event_multiplayer_campaign_night_ambush_result = 37
+
+# Persuade lords to make peace, outbox only (the talk is in a hall visit):
+# a = lord, b = method (0 bribe, 1 friendship, 2 persuasion attempt) |
+# locked out << 4, c = the client's new convince value (persuasion) or 0,
+# plus 65536. A persuasion attempt reaching 0 or below convinces the lord.
+multiplayer_event_multiplayer_campaign_quest_convince      = 38
+
+# Debug launcher only: Ctrl + left click on the map moves the player's own
+# party there. a = x, b = y (fixed point 1000). The server ignores it unless
+# $g_coop_debug_reveal is set.
+multiplayer_event_multiplayer_campaign_debug_teleport = 39
 
 #multiplayer message types
 multiplayer_message_type_auto_team_balance_done      = 2

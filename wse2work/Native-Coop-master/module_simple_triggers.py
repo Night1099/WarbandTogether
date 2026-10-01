@@ -21,6 +21,107 @@ from module_constants import *
 
 simple_triggers = [
 
+  # Client camera. mbMapWindow::open seeds the camera from p_main_party --
+  # a placeholder on a client -- on EVERY open (join, menu/mission return),
+  # leaving the follow target untouched, so a later snap is undone and the
+  # follow spring glides back. The engine runs ti_on_switch_to_map at the
+  # tail of open, after that reseed, so a snap there is what the first
+  # rendered frame shows.
+  #
+  # The join open comes 4 frames after the accept event, before any of the
+  # world snapshot, and the own party's true position only reaches the
+  # client after the whole snapshot has drained (the slot's party sits on
+  # its template spot until hydrate moves it; positions travel as
+  # replication rows behind the event FIFO, and ch125 ev 60 announces the
+  # hydrated one). So the client does what a save-load does: it keeps its
+  # own record of where its party last was (coop_client_camera.wsedict in
+  # this client's WSE storage), places its local party copy there at the
+  # first open, and follows it. Until ev 60 lands the copy is re-pinned
+  # every frame, because the spawn and any early replication row for it
+  # carry the pre-hydrate position. Client globals are wiped per connect,
+  # so this re-arms on every join.
+  (ti_on_switch_to_map,
+   [
+    (try_begin),
+      (neg|multiplayer_is_server),
+      (multiplayer_is_campaign),
+      (multiplayer_get_my_player, ":my_player"),
+      (store_add, ":my_party", multiplayer_campaign_player_parties_begin, ":my_player"),
+      (set_fixed_point_multiplier, 1000),
+      (try_begin),
+        (eq, "$g_coop_camera_landed", 0),
+        (eq, "$g_coop_camera_guess", 0),
+        (assign, "$g_coop_camera_guess", -1),
+        (assign, "$g_coop_camera_pin_frames", 0),
+        (dict_create, ":dict"),
+        (try_begin),
+          (dict_load_file, ":dict", "@coop_client_camera"),
+          (dict_has_key, ":dict", "@x"),
+          (dict_has_key, ":dict", "@y"),
+          (dict_get_int, "$g_coop_camera_cache_x", ":dict", "@x"),
+          (dict_get_int, "$g_coop_camera_cache_y", ":dict", "@y"),
+          (assign, "$g_coop_camera_guess", 1),
+        (try_end),
+        (dict_free, ":dict"),
+      (try_end),
+      (try_begin),
+        (eq, "$g_coop_camera_landed", 0),
+        (eq, "$g_coop_camera_guess", 1),
+        (init_position, pos1),
+        (position_set_x, pos1, "$g_coop_camera_cache_x"),
+        (position_set_y, pos1, "$g_coop_camera_cache_y"),
+        (party_set_position, ":my_party", pos1),
+      (try_end),
+      (set_camera_follow_party, ":my_party", 1),
+    (try_end),
+   ]),
+
+  (0,
+   [
+    (try_begin),
+      (neg|multiplayer_is_server),
+      (multiplayer_is_campaign),
+      (eq, "$g_coop_camera_landed", 0),
+      (eq, "$g_coop_camera_guess", 1),
+      (val_add, "$g_coop_camera_pin_frames", 1),
+      (try_begin),
+        # Failsafe: the server's own-party position (ch125 ev 60) normally
+        # lands within the join snapshot drain. If it is dropped or never
+        # sent, stop pinning so the party is not frozen on the map forever
+        # -- the drain-time replicated position is authoritative by now.
+        (ge, "$g_coop_camera_pin_frames", 600),
+        (assign, "$g_coop_camera_landed", 1),
+        (display_message, "@[CAMERA] position landed via failsafe (server ev 60 not received)"),
+      (else_try),
+        (multiplayer_get_my_player, ":my_player"),
+        (store_add, ":my_party", multiplayer_campaign_player_parties_begin, ":my_player"),
+        (set_fixed_point_multiplier, 1000),
+        (init_position, pos1),
+        (position_set_x, pos1, "$g_coop_camera_cache_x"),
+        (position_set_y, pos1, "$g_coop_camera_cache_y"),
+        (party_set_position, ":my_party", pos1),
+      (try_end),
+    (try_end),
+   ]),
+
+  (1,
+   [
+    (try_begin),
+      (neg|multiplayer_is_server),
+      (multiplayer_is_campaign),
+      (eq, "$g_coop_camera_landed", 1),
+      (multiplayer_get_my_player, ":my_player"),
+      (store_add, ":my_party", multiplayer_campaign_player_parties_begin, ":my_player"),
+      (set_fixed_point_multiplier, 1000),
+      (party_get_position, pos1, ":my_party"),
+      (position_get_x, ":x", pos1),
+      (position_get_y, ":y", pos1),
+      (this_or_next|neq, ":x", "$g_coop_camera_cache_x"),
+      (neq, ":y", "$g_coop_camera_cache_y"),
+      (call_script, "script_coop_client_camera_cache_save", ":x", ":y"),
+    (try_end),
+   ]),
+
   # Display server IP on first tick (s59 is set by warband_coop.asi from coop.ini)
   (0,
    [
@@ -107,6 +208,22 @@ simple_triggers = [
     (jump_to_menu, "mnu_coop_join_battle"),
    ]),
 
+  # Debug launcher: Ctrl + left click on the map moves the own party there.
+  # The campaign server decides whether debug mode is on (ch49 ev 39).
+  (0,
+   [
+    (game_in_multiplayer_mode),
+    (neg|multiplayer_is_server),
+    (key_is_down, key_left_control),
+    (key_clicked, key_left_mouse_button),
+    (set_fixed_point_multiplier, 1000),
+    (get_mouse_map_coordinates, pos1),
+    (position_get_x, ":x", pos1),
+    (position_get_y, ":y", pos1),
+    (multiplayer_send_3_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
+        multiplayer_event_multiplayer_campaign_debug_teleport, ":x", ":y"),
+   ]),
+
   # Deferred battle-server connect: multiplayer_connect_to_server must run
   # from game-loop context, not the network receive handler (same rule as
   # the ev-9 leave_encounter flag).
@@ -119,20 +236,46 @@ simple_triggers = [
     (multiplayer_connect_to_server, s0, s1, 0),
    ]),
 
+  # Waiting inside a center (coop_center_wait): Space returns to the
+  # center menu. The lock/attach is untouched -- the player never left.
+  (0,
+   [
+    (eq, "$g_coop_center_waiting", 1),
+    (key_clicked, key_space),
+    (assign, "$g_coop_center_waiting", 0),
+    (call_script, "script_coop_client_request_menu", "mnu_coop_center_encounter"),
+   ]),
+
+  # Deferred menu entry requested by a receive handler
+  # (script_coop_client_request_menu): simple triggers only run on the
+  # map with no native window open, so this is the first safe frame.
+  (0,
+   [
+    (eq, "$g_coop_pending_menu_armed", 1),
+    (assign, "$g_coop_pending_menu_armed", 0),
+    (jump_to_menu, "$g_coop_pending_menu"),
+   ]),
+
   # Applies the pool join password once per dedicated process. Battle
   # servers do not run map simple-triggers, so this only covers the
   # campaign server -- the battle-server hook is in
   # module_coop_mission_templates.py's coop_battle start trigger.
   (0.5,
    [
-    (eq, "$g_coop_password_applied", 0),
+    (eq, "$g_coop_server_cfg_applied", 0),
     (multiplayer_is_dedicated_server),
-    (call_script, "script_coop_apply_server_password"),
+    (call_script, "script_coop_apply_server_cfg"),
    ]),
 
-  # DEBUG: make all parties visible on map (remove when not needed)
+  # Debug reveal: the campaign server marks every party map-visible when
+  # launched with COOP_DEBUG_REVEAL=1 (coop_launch_all_debug.bat, read
+  # from the campaign server's config dict by coop_apply_server_cfg). Off
+  # by default: native fog of war.
   (6,
    [
+    (multiplayer_is_server),
+    (multiplayer_is_campaign),
+    (eq, "$g_coop_debug_reveal", 1),
     (try_for_parties, ":party_no"),
       (party_is_active, ":party_no"),
       (party_set_flags, ":party_no", pf_always_visible, 1),
@@ -160,10 +303,12 @@ simple_triggers = [
       (leave_encounter),
       (display_message, "@Encounter cleared."),
     (try_end),
-    # Send pending local battle results on campaign rejoin.
-    # The ASI reads coop_local_result.ini and sets pending globals.
+    # Send pending local battle results on campaign rejoin, once the
+    # server has hydrated the character they apply to (its inventory push
+    # has landed). The ASI reads coop_local_result.ini and sets pending globals.
     (try_begin),
       (eq, "$g_coop_pending_local_result", 1),
+      (eq, "$g_coop_inv_sync_ready", 1),
       (assign, "$g_coop_pending_local_result", 2),
       (assign, ":wl", "$g_coop_pending_win_loss"),
       (assign, ":xp", "$g_coop_pending_xp"),
@@ -227,16 +372,6 @@ simple_triggers = [
               multiplayer_event_multiplayer_campaign_local_fight_result,
               -2, "$g_coop_pending_cas_tid_9", "$g_coop_pending_cas_killed_9"),
       (try_end),
-    (try_end),
-    # Detect return from local SP center visit and notify server
-    (try_begin),
-      (eq, "$g_coop_in_local_visit", 1),
-      # If we're here (simple trigger on campaign map), the visit mission has ended.
-      # Send visit_done event to server.
-      (assign, "$g_coop_in_local_visit", 0),
-      (multiplayer_send_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
-          multiplayer_event_multiplayer_campaign_local_visit_done),
-      (display_message, "@Center visit complete."),
     (try_end),
    ]),
 
@@ -2102,16 +2237,22 @@ simple_triggers = [
          (try_end),
        (try_end),
 	   	   
-	   (try_for_parties, ":bandit_camp"),
-	 	 (gt, ":bandit_camp", "p_spawn_points_end"),
-		 #Can't have party is active here, because it will fail for inactive parties
-		 (party_get_template_id, ":template", ":bandit_camp"),
-		 (ge, ":template", "pt_steppe_bandit_lair"),
+	   # Reveal bandit lairs near p_main_party. Singleplayer only: the
+	   # campaign server has no main party, and party_set_flags broadcasts
+	   # a net event to every client on each call.
+	   (try_begin),
+	     (neg|game_in_multiplayer_mode),
+	     (try_for_parties, ":bandit_camp"),
+	 	   (gt, ":bandit_camp", "p_spawn_points_end"),
+		   #Can't have party is active here, because it will fail for inactive parties
+		   (party_get_template_id, ":template", ":bandit_camp"),
+		   (ge, ":template", "pt_steppe_bandit_lair"),
 		
-		 (store_distance_to_party_from_party, ":distance", "p_main_party", ":bandit_camp"),
-	     (lt, ":distance", 3), 
-	     (party_set_flags, ":bandit_camp", pf_disabled, 0),
-	     (party_set_flags, ":bandit_camp", pf_always_visible, 1),	   
+		   (store_distance_to_party_from_party, ":distance", "p_main_party", ":bandit_camp"),
+	       (lt, ":distance", 3), 
+	       (party_set_flags, ":bandit_camp", pf_disabled, 0),
+	       (party_set_flags, ":bandit_camp", pf_always_visible, 1),	   
+	     (try_end),
 	   (try_end),
     ]),
 
@@ -2876,9 +3017,7 @@ simple_triggers = [
      (neg|game_in_multiplayer_mode),
 	 
      (call_script, "script_update_mercenary_units_of_towns"),
-     #NPC changes begin
-     # removes   (call_script, "script_update_companion_candidates_in_taverns"),
-     #NPC changes end
+     (call_script, "script_update_companion_candidates_in_taverns"),
      (call_script, "script_update_ransom_brokers"),
      (call_script, "script_update_tavern_travellers"),
      (call_script, "script_update_tavern_minstrels"),
@@ -2993,6 +3132,12 @@ simple_triggers = [
           (neg|check_quest_succeeded, "qst_deal_with_night_bandits"),
           (assign, ":continue", 1),
         (else_try),
+          # Coop players' own deal-with-night-bandits quests.
+          (party_get_slot, ":coop_hold", ":center_no", slot_center_coop_night_bandit_hold),
+          (store_current_hours, ":cur_hours"),
+          (gt, ":coop_hold", ":cur_hours"),
+          (assign, ":continue", 1),
+        (else_try),
           (store_random_in_range, ":random_no", 0, 100),
           (lt, ":random_no", 3),
           (assign, ":continue", 1),
@@ -3011,7 +3156,8 @@ simple_triggers = [
           (try_end),
           (party_set_slot, ":center_no", slot_center_has_bandits, ":bandit_troop"),
           (try_begin),
-            (eq, "$cheat_mode", 1),
+            (this_or_next|eq, "$cheat_mode", 1),
+            (eq, "$g_coop_debug_reveal", 1),
             (str_store_party_name, s1, ":center_no"),
             (display_message, "@{!}{s1} is infested by bandits (at night)."),
           (try_end),
@@ -3027,7 +3173,8 @@ simple_triggers = [
           (lt, ":random_no", ":random_chance"),
           (party_set_slot, ":center_no", slot_center_has_bandits, 0),
           (try_begin),
-            (eq, "$cheat_mode", 1),
+            (this_or_next|eq, "$cheat_mode", 1),
+            (eq, "$g_coop_debug_reveal", 1),
             (str_store_party_name, s1, ":center_no"),
             (display_message, "@{s1} is no longer infested by bandits (at night)."),
           (try_end),
@@ -4593,6 +4740,8 @@ simple_triggers = [
               (val_sub, ":countdown", 1),
               (player_set_slot, ":player_no", slot_player_join_time, ":countdown"),
               (eq, ":countdown", 0),
+              (assign, reg1, ":player_no"),
+              (display_message, "@[HYDRATE] player {reg1} via timeout (no identify) -- username keying"),
               (call_script, "script_coop_player_hydrate", ":player_no", 0),
           (try_end),
       (try_end),
@@ -4644,6 +4793,18 @@ simple_triggers = [
           (assign, "$g_coop_inv_snap_ready", 0),
           (call_script, "script_coop_inv_client_diff_and_send"),
       (try_end),
+
+      # --- Client outbox drain ---
+      # Intents captured inside a local visit replay once per connection
+      # (client globals are zeroed on every connect, so the latch resets
+      # itself), after the hydrate's inventory push has landed so the
+      # server applies them on top of the loaded character.
+      (try_begin),
+          (eq, "$g_coop_outbox_drained", 0),
+          (eq, "$g_coop_inv_sync_ready", 1),
+          (assign, "$g_coop_outbox_drained", 1),
+          (call_script, "script_coop_outbox_drain"),
+      (try_end),
    ]),
 
   # Stale center lock cleanup: release locks held by disconnected players (30s)
@@ -4661,8 +4822,28 @@ simple_triggers = [
           (try_end),
           (eq, ":still_connected", 0),
           (party_set_slot, ":center", slot_center_coop_lock_player, -1),
+          # Detach the ghost's party too, or a re-enabled party stays pinned
+          # to the center and cannot move after the holder rejoins.
+          (store_add, ":ghost_party", multiplayer_campaign_player_parties_begin, ":lock_player"),
+          (try_begin),
+              (party_is_active, ":ghost_party"),
+              (party_detach, ":ghost_party"),
+          (try_end),
           (str_store_party_name, s0, ":center"),
           (display_message, "@[COOP] Released stale lock on {s0}"),
+      (try_end),
+   ]),
+
+  # Quest tick: tracked parties, arrivals and expiry for every hydrated
+  # player with live quests (module_coop_scripts.py QUEST SYNC). Seconds
+  # on the dedicated campaign personality, like the autosave above.
+  (3,
+   [
+      (multiplayer_is_server),
+      (multiplayer_is_campaign),
+      (try_for_players, ":player_no", 1),
+          (player_is_active, ":player_no"),
+          (call_script, "script_coop_quest_tick", ":player_no"),
       (try_end),
    ]),
 

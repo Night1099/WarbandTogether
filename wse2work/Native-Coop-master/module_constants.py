@@ -1988,6 +1988,100 @@ slot_coop_inv_snap_equip_mod_begin  = 170   # 170-179: equipment modifiers (slot
 slot_coop_inv_snap_bag_item_begin   = 180   # 180-275: bag item IDs (slots 10-105)
 slot_coop_inv_snap_bag_mod_begin    = 276   # 276-371: bag modifiers (slots 10-105)
 
+# Where the inventory / merchant close diffs emit each changed slot:
+# straight to the server (campaign map) or into the client outbox (inside
+# a visit, replayed after the rejoin).
+coop_emit_send   = 0
+coop_emit_outbox = 1
+coop_emit_count  = 2   # diff only, emit nothing (reg0 = changed slots)
+
+# $g_coop_visit_trade_state: an in-scene trade is armed by the dialog line
+# that opens the screen, promoted by the window hook when the trade window
+# is actually up, and closed by the visit scene tick only from that state
+# (a conversation does not pause the tick; a window does).
+coop_visit_trade_idle      = 0
+coop_visit_trade_armed     = 1
+coop_visit_trade_window_up = 2
+
+# Relation sync. A client reports only the deltas its own native dialog
+# and menu code applied; anything larger is server-derived.
+coop_relation_delta_max = 10
+# ch125 lord_reputation packing: int1 = first troop, int2/int3 carry six
+# troops each at 5 bits (lrep_* values reach 25); 12 troops per event.
+coop_rep_pack_bits      = 5
+coop_rep_pack_per_int   = 6
+coop_rep_pack_per_event = 12
+# Per-target mirror of the encoded value a player context loaded,
+# (value + 100) * 2 + met, so the context end diffs without a second
+# dict pass. 200 encodes "relation 0, not met".
+# Lives on the lord/merchant troop itself; trp_temp_troop's 160+ snapshot range is a different troop.
+slot_troop_coop_rel_mirror = 160
+slot_party_coop_rel_mirror = 601   # party slots are one namespace; 600 = slot_party_coop_battle_slot
+coop_rel_mirror_zero       = 200
+
+# Quest sync. Eight native quest types run per player: the server holds
+# each player's quests and one pending offer in the char dict, rolls
+# offers with native's parameter rules and applies every consequence;
+# the server's own qst_* singleton is never used.
+coop_quest_status_active    = 0
+coop_quest_status_failed    = 1
+coop_quest_status_completed = 2
+coop_quest_status_cancelled = 3
+coop_quest_status_succeeded = 4
+# Transitions the server tick can apply to an active quest.
+coop_quest_act_succeed      = 1
+coop_quest_act_fail         = 2
+coop_quest_act_expire       = 3
+coop_quest_act_caravan_done = 4
+coop_quest_act_girl_freed   = 5   # kidnappers gone before the ransom: she joins the holder
+coop_quest_act_girl_home    = 6   # holder brought her to the giver's town
+coop_quest_act_lord_1       = 7   # persuade-lords: lord 1 captured by the holder
+coop_quest_act_lord_2       = 8   # persuade-lords: lord 2 captured by the holder
+coop_quest_act_peace_cancel = 9   # persuade-lords: the kingdoms made peace on their own
+# A caravan or herd escorting a player's quest carries that player's
+# player_no + 1 while the player is connected (stamped at accept and
+# hydrate, cleared at exit); encounters with a stamped party bounce.
+slot_party_coop_quest_owner = 602   # party slots are one namespace; 601 = slot_party_coop_rel_mirror
+# Bit (quest_no - mayor_quests_begin) set while that quest is active,
+# failed-awaiting-claim or succeeded-awaiting-claim; rebuilt at hydrate.
+slot_player_coop_quest_mask = 68
+# Client-side quest slot: the server's looter kill count (ev 58). Native
+# reads an engine per-player counter instead, which coop cannot use.
+slot_quest_coop_count = 30          # native slot_quest_* end at 27
+# Native arrival distances: the caravan pays out within 4 of the target
+# town, the herd counts as delivered within 3 of the target center.
+coop_quest_caravan_arrive_dist = 4
+coop_quest_herd_arrive_dist    = 3
+# The girl is home once the holder's party is this close to the giver's
+# town (native: entering the town).
+coop_quest_girl_arrive_dist    = 3
+# Native's looter bounty per band reported to the guildmaster.
+coop_quest_looter_bounty = 40
+# The ransom is paid only while the holder's party is this close to the
+# kidnappers (the encounter just happened).
+coop_quest_ransom_range = 3
+
+# Persuade lords to make peace (ch49 ev 38): convince methods, the locked-out
+# flag bit, the bias that keeps a negative convince value positive on the
+# wire, and native's convince value for the second lord.
+coop_quest_convince_bribe      = 0
+coop_quest_convince_friendship = 1
+coop_quest_convince_persuade   = 2
+coop_quest_convince_locked     = 16
+coop_quest_convince_bias       = 65536
+coop_quest_peace_second_value  = 1500
+
+# trp_kidnapped_girl is a single troop, so one player holds her quest at a
+# time: the hour the holder's quest expires, 0 when free. Lives in the
+# campaign save, so it outlives a holder who never comes back.
+slot_troop_coop_quest_lock = 163    # troop slots are one namespace; 162 = slot_troop_coop_prev_center
+
+# Deal with night bandits: the latest expiry hour among players holding the
+# quest for this town. Native's daily infestation trigger re-infests the
+# quest's town; the server never runs the singleton quest, so it reads this.
+# Any player winning the town's ambush clears it for all holders.
+slot_center_coop_night_bandit_hold = 605   # party slots are one namespace; 604 = slot_center_coop_merc_prev_amount
+
 # trp_temp_array_b slots for merchant trade snapshot (diff on close)
 slot_coop_trade_snap_item_begin = 0    # 0-95: merchant item IDs
 slot_coop_trade_snap_mod_begin  = 96   # 96-191: merchant item modifiers
@@ -2001,10 +2095,44 @@ slot_coop_local_snap_count      = 0     # number of stacks snapshotted
 slot_coop_local_snap_begin      = 1     # 1-60: max 20 stacks * 3 (troop_id, size_before, 0)
 slot_coop_local_snap_stride     = 3
 
-# trp_temp_array_c slots for NPC visitor data during local center visit
-slot_coop_local_visit_npc_count = 70    # number of NPCs received
-slot_coop_local_visit_npc_begin = 71    # 71-110: max 20 NPCs * 2 (entry_point, troop_id)
-slot_coop_local_visit_npc_stride = 2
+# trp_temp_array_c slots for the visit roster the server pushes (ch125 52/53).
+# Two lists of (entry_point, troop_id) pairs: the center scene and the hall.
+slot_coop_visit_center_npc_count = 70
+slot_coop_visit_center_npc_begin = 71    # 71-110
+slot_coop_visit_hall_npc_count   = 111
+slot_coop_visit_hall_npc_begin   = 112   # 112-151
+coop_visit_npc_max    = 20
+coop_visit_npc_stride = 2
+
+# Tavern occupants pushed by ch125 ev 61 (role, troop, aux). The client
+# writes each into the slot native's tavern menu and dialogs already read,
+# so no native condition has to change.
+coop_tavern_role_mercenary  = 0   # aux = stack size
+coop_tavern_role_broker     = 1
+coop_tavern_role_traveller  = 2   # aux = info faction
+coop_tavern_role_minstrel   = 3
+coop_tavern_role_bookseller = 4
+coop_tavern_role_attacker   = 5
+coop_tavern_role_promoter   = 6
+coop_tavern_role_farmer     = 7   # aux = bandit-infested village
+coop_tavern_role_companion  = 8
+
+# A tavern transaction replays after the visit's reconnect, which restores
+# the player's party onto the center it just left. Anything further away
+# than this is not a player who walked out of that tavern.
+coop_tavern_transaction_range = 3
+
+# The server clock keeps running through a visit, so trigger 72 can re-roll
+# a tavern between what the player agreed to and the replay. The re-roll
+# keeps one generation back -- the mercenary stack it replaced on the town,
+# each companion's previous town -- and the replay accepts either.
+slot_center_coop_merc_prev_troop  = 603   # party slots are one namespace; 602 = slot_party_coop_quest_owner
+slot_center_coop_merc_prev_amount = 604
+slot_troop_coop_prev_center       = 162
+
+# visit_npc int1: which scene the entry belongs to
+coop_visit_roster_center = 0
+coop_visit_roster_hall   = 1
 
 # Max enemy stacks we can receive for local battles
 coop_local_battle_max_stacks    = 20
@@ -2029,6 +2157,14 @@ coop_merchant_type_village_elder = 4   # slot_town_elder (25)
 coop_center_type_town    = 0
 coop_center_type_castle  = 1
 coop_center_type_village = 2
+
+# What the client ASI must do for a mission this client starts itself.
+# Read by warband_coop.asi at mbMission::setParams and cleared once consumed;
+# without a request the mission runs at the engine's MP-client game type and
+# the player's agent has no controller, no animation and no AI.
+coop_asi_local_mission_none   = 0
+coop_asi_local_mission_battle = 1   # hostile encounter: metaMission gets the field-battle shape
+coop_asi_local_mission_visit  = 2   # peaceful center visit: metaMission gets the vanilla map-encounter shape
 
 ########################################################
 ##  COOP BATTLE CONSTANTS   ############################
