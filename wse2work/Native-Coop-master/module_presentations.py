@@ -12362,6 +12362,10 @@ presentations = [
    [(ti_on_presentation_load,
      [(presentation_set_duration, 999999),
       (set_fixed_point_multiplier, 1000),
+      (call_script, "script_coop_my_party"),
+      (assign, ":main_party", reg0),
+      (call_script, "script_coop_my_troop"),
+      (assign, ":main_troop", reg0),
       
       (create_mesh_overlay, reg1, "mesh_pic_payment"),
       (position_set_x, pos1, 800),
@@ -12452,7 +12456,7 @@ presentations = [
           (assign, ":garrison_troop", 1),		  
 		(try_end),
 		
-        (this_or_next|eq, ":party_no", "p_main_party"),
+        (this_or_next|eq, ":party_no", ":main_party"),
 			(eq, ":garrison_troop", 1),
         (val_add, ":num_lines", 1), #include empty towns/castles
       (try_end),
@@ -12782,7 +12786,7 @@ presentations = [
           (assign, ":garrison_troop", 1),			  
         (try_end),
 		
-        (this_or_next|eq, ":party_no", "p_main_party"),
+        (this_or_next|eq, ":party_no", ":main_party"),
 			(eq, ":garrison_troop", 1),
         (assign, ":total_wage", 0),
         (party_get_num_companion_stacks, ":num_stacks", ":party_no"),
@@ -12798,7 +12802,7 @@ presentations = [
           (eq, ":garrison_troop", 1),
           (val_div, ":total_wage", 2), #Half payment for garrisons
         (else_try),
-          (eq, ":party_no", "p_main_party"),
+          (eq, ":party_no", ":main_party"),
           (store_sub, ":total_payment_ratio", 14, "$g_cur_week_half_daily_wage_payments"), #between 0 and 7
           (val_mul, ":total_wage", ":total_payment_ratio"),
           (val_div, ":total_wage", 14),
@@ -12808,7 +12812,7 @@ presentations = [
         (val_add, ":net_change", ":total_wage"),
         (str_store_party_name, s0, ":party_no"),
         (try_begin),
-          (eq, ":party_no", "p_main_party"),
+          (eq, ":party_no", ":main_party"),
           (str_store_string, s0, "str_s0s_party"),
         (try_end),
         (create_text_overlay, reg1, "str_wages_for_s0", 0),
@@ -12895,7 +12899,7 @@ presentations = [
       (position_set_x, pos1, 25),
       (position_set_y, pos1, ":cur_y"),
       (overlay_set_position, reg1, pos1),
-      (store_troop_gold, ":player_wealth", "trp_player"),
+      (store_troop_gold, ":player_wealth", ":main_troop"),
       (assign, reg0, ":player_wealth"),
       (create_text_overlay, reg1, "@{!}{reg0}", tf_right_align|tf_single_line),
       (position_set_x, pos1, 900),
@@ -12965,10 +12969,10 @@ presentations = [
         (assign, "$g_player_debt_to_party_members", ":player_new_debt_to_party_members"),
         (try_begin),
           (gt, ":player_wealth_dif", 0),
-          (troop_remove_gold, "trp_player", ":player_wealth_dif"),
+          (troop_remove_gold, ":main_troop", ":player_wealth_dif"),
         (else_try),
           (val_mul, ":player_wealth_dif", -1),
-          (troop_add_gold, "trp_player", ":player_wealth_dif"),
+          (troop_add_gold, ":main_troop", ":player_wealth_dif"),
         (try_end),
         (try_for_range, ":center_no", centers_begin, centers_end),
           (party_slot_eq, ":center_no", slot_town_lord, "trp_player"),

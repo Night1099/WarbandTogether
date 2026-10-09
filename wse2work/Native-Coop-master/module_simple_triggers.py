@@ -139,13 +139,17 @@ simple_triggers = [
     (assign, "$g_coop_identify_ticks", 0),
     (assign, "$g_coop_my_steam_acctid", 0),
 
+    # Module-only: last game hour game_event_simulate_battle printed its
+    # "[SIM] ... assault waits" line (one line per hour across all pairs).
+    (assign, "$g_coop_sim_wait_log_hour", -1),
+
     # DLL-written, module-read: 1 once a host/client Steam role has waited out
     # the grace and Steam still isn't running. Assigned here so it emits the
     # bare name the DLL resolver matches (read-only "$name" emission is unmatchable).
     (assign, "$g_coop_steam_missing", 0),
     (assign, "$g_coop_steam_warned", 0),  # module-only latch: warn once per session
 
-    # Clear stale battle dict from previous session
+    # Per-process server state (also re-run on a loaded world).
     (try_begin),
       (multiplayer_is_server),
       # These two are DLL-written, module-read. A module-side assignment is
@@ -154,31 +158,7 @@ simple_triggers = [
       # silently dropped). The DLL republishes both continuously.
       (assign, "$g_coop_battle_slots_online", 0),
       (assign, "$coop_battle_slot", 0),
-      (try_for_range, ":bslot", 0, coop_battle_num_slots),
-        (dict_create, ":d"),
-        (call_script, "script_coop_battle_slot_dict_name", ":bslot"),
-        (dict_load_file, ":d", s41, 2),
-        (dict_set_int, ":d", "@battle_state", coop_battle_state_none),
-        (dict_save, ":d", s41),
-        (dict_free, ":d"),
-        (call_script, "script_coop_battle_slot_set_in_progress", ":bslot", 0),
-        (call_script, "script_coop_battle_slot_clear_ended", ":bslot"),
-      (try_end),
-
-      # slot_party_coop_battle_slot markers are battle-transient but party
-      # slots persist in savegames. A restart aborts every in-progress
-      # battle, so a crash+restart from a mid-battle autosave would leave
-      # marked parties un-encounterable forever unless swept here.
-      (try_for_parties, ":mkp"),
-        (party_get_slot, ":mkslot", ":mkp", slot_party_coop_battle_slot),
-        (gt, ":mkslot", 0),
-        (party_set_slot, ":mkp", slot_party_coop_battle_slot, 0),
-      (try_end),
-
-      # Initialize center lock slots to -1 (free)
-      (try_for_range, ":center", centers_begin, centers_end),
-          (party_set_slot, ":center", slot_center_coop_lock_player, -1),
-      (try_end),
+      (call_script, "script_coop_server_session_reset"),
     (try_end),
    ]),
 
@@ -222,6 +202,18 @@ simple_triggers = [
     (position_get_y, ":y", pos1),
     (multiplayer_send_3_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
         multiplayer_event_multiplayer_campaign_debug_teleport, ":x", ":y"),
+   ]),
+
+  # Debug launcher: Ctrl + V on the map makes the Kingdom of Vaegirs declare
+  # war on the players (ch49 ev 40; the server decides whether debug is on).
+  (0,
+   [
+    (game_in_multiplayer_mode),
+    (neg|multiplayer_is_server),
+    (key_is_down, key_left_control),
+    (key_clicked, key_v),
+    (multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
+        multiplayer_event_multiplayer_campaign_debug_declare_war, "fac_kingdom_2"),
    ]),
 
   # Deferred battle-server connect: multiplayer_connect_to_server must run
@@ -3156,8 +3148,7 @@ simple_triggers = [
           (try_end),
           (party_set_slot, ":center_no", slot_center_has_bandits, ":bandit_troop"),
           (try_begin),
-            (this_or_next|eq, "$cheat_mode", 1),
-            (eq, "$g_coop_debug_reveal", 1),
+            (eq, "$cheat_mode", 1),
             (str_store_party_name, s1, ":center_no"),
             (display_message, "@{!}{s1} is infested by bandits (at night)."),
           (try_end),
@@ -3173,8 +3164,7 @@ simple_triggers = [
           (lt, ":random_no", ":random_chance"),
           (party_set_slot, ":center_no", slot_center_has_bandits, 0),
           (try_begin),
-            (this_or_next|eq, "$cheat_mode", 1),
-            (eq, "$g_coop_debug_reveal", 1),
+            (eq, "$cheat_mode", 1),
             (str_store_party_name, s1, ":center_no"),
             (display_message, "@{s1} is no longer infested by bandits (at night)."),
           (try_end),
@@ -4642,15 +4632,33 @@ simple_triggers = [
 		(call_script, "script_multiplayer_campaign_player_exit", ":player_no"),
 	]),
 
-	# Autosave all player characters every 5 minutes (300 seconds)
+	# Autosave. Intervals on the campaign server are campaign hours: 300 =
+	# 20 real minutes with a player online; the debug launcher saves every
+	# 75 (5 real minutes).
 	(300,
 	[
 		(multiplayer_is_server),
 		(multiplayer_is_campaign),
-		(try_for_players, ":player_no", 1),
-			(player_is_active, ":player_no"),
-			(call_script, "script_coop_save_character", ":player_no"),
-		(try_end),
+		(neq, "$g_coop_debug_reveal", 1),
+		(call_script, "script_coop_save_all"),
+	]),
+
+	(75,
+	[
+		(multiplayer_is_server),
+		(multiplayer_is_campaign),
+		(eq, "$g_coop_debug_reveal", 1),
+		(call_script, "script_coop_save_all"),
+	]),
+
+	# Last player left (multiplayer_campaign_player_exit): save the world.
+	(0,
+	[
+		(eq, "$g_coop_world_save_pending", 1),
+		(multiplayer_is_server),
+		(multiplayer_is_campaign),
+		(assign, "$g_coop_world_save_pending", 0),
+		(call_script, "script_coop_world_save"),
 	]),
 
   # Screen close poller: party + character snapshot-diff
@@ -4844,6 +4852,17 @@ simple_triggers = [
       (try_for_players, ":player_no", 1),
           (player_is_active, ":player_no"),
           (call_script, "script_coop_quest_tick", ":player_no"),
+      (try_end),
+   ]),
+
+  # Per-player campaign-hour dispatcher (module_coop_scripts.py WAGES).
+  (1,
+   [
+      (multiplayer_is_server),
+      (multiplayer_is_campaign),
+      (try_for_players, ":player_no", 1),
+          (player_is_active, ":player_no"),
+          (call_script, "script_coop_player_hour_tick", ":player_no"),
       (try_end),
    ]),
 

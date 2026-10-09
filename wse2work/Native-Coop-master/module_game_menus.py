@@ -35,6 +35,36 @@ from module_constants import *
 # Note: The first Menu is the initial character creation menu.
 ####################################################################################################################
 
+# The two siege options of a hostile or visited town/castle, shared by
+# mnu_coop_center_encounter and mnu_coop_center_locked. {s1} is the center's
+# name, $g_coop_center_party the center (both set by the menu's own code).
+def coop_center_siege_options(condition):
+  return [
+      ("coop_center_assault",
+      condition,
+      "Lay siege and assault {s1}!",
+      [
+          (assign, "$g_coop_encounter_done", 1),
+          # Ask the campaign server to set up a siege battle for this center; the
+          # ev-10 battle_available reply carries the port and auto-connects us.
+          (assign, "$g_coop_battle_requested", 1),
+          (multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
+              multiplayer_event_multiplayer_campaign_request_siege, "$g_coop_center_party"),
+          (change_screen_return),
+      ]),
+
+      ("coop_center_assault_local",
+      condition,
+      "Lead the assault yourself (local).",
+      [
+          # Server replies with start_siege_local carrying the wall scene;
+          # the mission launches from that receive handler.
+          (multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
+              multiplayer_event_multiplayer_campaign_request_siege_local, "$g_coop_center_party"),
+          (display_message, "@Preparing the assault..."),
+      ]),
+  ]
+
 game_menus = [
   ("start_game_0",menu_text_color(0xFF000000)|mnf_disable_all_keys,
     "Welcome, adventurer, to Mount and Blade: Warband. Before beginning the game you must create your character. Remember that in the traditional medieval society depicted in the game, war and politics are usually dominated by male members of the nobility. That does not however mean that you should not choose to play a female character, or one who is not of noble birth. Male nobles may have a somewhat easier start, but women and commoners can attain all of the same goals -- and in fact may have a much more interesting if more challenging early game.",
@@ -14919,36 +14949,10 @@ game_menus = [
           (change_screen_mission),
       ]),
 
-      ("coop_center_assault",
-      [
+    ] + coop_center_siege_options([
           (this_or_next|eq, "$g_coop_center_type", coop_center_type_town),
           (eq, "$g_coop_center_type", coop_center_type_castle),
-      ],
-      "Lay siege and assault {s1}!",
-      [
-          (assign, "$g_coop_encounter_done", 1),
-          # Ask the campaign server to set up a siege battle for this center; the
-          # ev-10 battle_available reply carries the port and auto-connects us.
-          (assign, "$g_coop_battle_requested", 1),
-          (multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
-              multiplayer_event_multiplayer_campaign_request_siege, "$g_coop_center_party"),
-          (change_screen_return),
-      ]),
-
-      ("coop_center_assault_local",
-      [
-          (this_or_next|eq, "$g_coop_center_type", coop_center_type_town),
-          (eq, "$g_coop_center_type", coop_center_type_castle),
-      ],
-      "Lead the assault yourself (local).",
-      [
-          # Server replies with start_siege_local carrying the wall scene;
-          # the mission launches from that receive handler.
-          (multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
-              multiplayer_event_multiplayer_campaign_request_siege_local, "$g_coop_center_party"),
-          (display_message, "@Preparing the assault..."),
-      ]),
-
+    ]) + [
       # Stay inside the center (lock held, party attached -> untargetable)
       # while looking at the map and the hotkey screens; the world keeps
       # running. Space re-opens this menu (client simple trigger).
@@ -15084,13 +15088,23 @@ game_menus = [
 
   # --- Coop Center Locked ---
   ("coop_center_locked", mnf_enable_hot_keys|mnf_scale_picture,
-    "Another player is already visiting {s1}. You must wait until they leave.",
+    "{s2}",
     "none",
     [
         (str_store_party_name, s1, "$g_coop_center_party"),
+        (store_and, ":forbidden", "$g_coop_center_access", coop_center_access_forbidden),
+        (try_begin),
+            (neq, ":forbidden", 0),
+            (str_store_string, s2, "str_entrance_to_town_forbidden"),
+        (else_try),
+            (str_store_string, s2, "@Another player is already visiting {s1}. You must wait until they leave."),
+        (try_end),
         (set_background_mesh, "mesh_pic_town1"),
     ],
-    [
+    coop_center_siege_options([
+        (store_and, ":forbidden", "$g_coop_center_access", coop_center_access_forbidden),
+        (neq, ":forbidden", 0),
+    ]) + [
       ("coop_locked_leave",
       [],
       "Leave.",

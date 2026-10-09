@@ -3178,22 +3178,36 @@ scripts = [
       (assign, ":continue", 1),
       (try_begin),
         (multiplayer_is_campaign),
-        
+
+        # A player anywhere in either group (a center lock attaches the
+        # player's party to the center) waits the pair out: no trigger
+        # result keeps the map event, and the engine retries it until the
+        # player has left.
+        (assign, ":waiting_root", -1),
         (try_begin),
             (gt, ":observer_parties_num", 0),
             (assign, ":continue", 0),
-         (else_try),   
+         (else_try),
             (ge, ":root_defender_party", 0),
             (party_is_active, ":root_defender_party"),
-            (neg|party_is_non_player, ":root_defender_party"),
-            (assign, ":continue", 0),
+            (call_script, "script_cf_coop_party_group_has_player", ":root_defender_party"),
+            (assign, ":waiting_root", ":root_defender_party"),
         (else_try),
             (ge, ":root_attacker_party", 0),
             (party_is_active, ":root_attacker_party"),
-            (neg|party_is_non_player, ":root_attacker_party"),
+            (call_script, "script_cf_coop_party_group_has_player", ":root_attacker_party"),
+            (assign, ":waiting_root", ":root_attacker_party"),
+        (try_end),
+        (try_begin),
+            (ge, ":waiting_root", 0),
             (assign, ":continue", 0),
-        (try_end), 
-      (try_end),  
+            (store_current_hours, ":hours"),
+            (neq, ":hours", "$g_coop_sim_wait_log_hour"),
+            (assign, "$g_coop_sim_wait_log_hour", ":hours"),
+            (str_store_party_name, s0, ":waiting_root"),
+            (display_message, "@[SIM] {s0} assault waits: player inside"),
+        (try_end),
+      (try_end),
       
       (try_begin),
           (eq, ":continue", 1),
@@ -4185,11 +4199,13 @@ scripts = [
   ("game_get_troop_wage",
     [
       (store_script_param_1, ":troop_id"),
-      (store_script_param_2, ":unused"), #party id
+      (store_script_param_2, ":party_no"),
+      (call_script, "script_coop_party_owner_troop", ":party_no"),
+      (assign, ":leader", reg0),
       
       (assign,":wage", 0),
       (try_begin),
-        (this_or_next|eq, ":troop_id", "trp_player"),
+        (this_or_next|eq, ":troop_id", ":leader"),
         (eq, ":troop_id", "trp_kidnapped_girl"),
       (else_try),
         (is_between, ":troop_id", pretenders_begin, pretenders_end),
@@ -4219,14 +4235,14 @@ scripts = [
         (val_mul, ":wage", 2),
       (try_end),
       
-      (store_skill_level, ":leadership_level", "skl_leadership", "trp_player"),
+      (store_skill_level, ":leadership_level", "skl_leadership", ":leader"),
       (store_mul, ":leadership_bonus", 5, ":leadership_level"),
       (store_sub, ":leadership_factor", 100, ":leadership_bonus"), 
       (val_mul, ":wage", ":leadership_factor"),  #wage = wage * (100 - 5*leadership)/100
       (val_div, ":wage", 100),
 
       (try_begin),
-        (neq, ":troop_id", "trp_player"),
+        (neq, ":troop_id", ":leader"),
         (neq, ":troop_id", "trp_kidnapped_girl"),
         (neg|is_between, ":troop_id", pretenders_begin, pretenders_end),
         (val_max, ":wage", 1),
@@ -4237,18 +4253,20 @@ scripts = [
   ]),
 
   # script_game_get_total_wage
-  # This script is called from the game engine for calculating total wage of the player party which is shown at the party window.
+  # This script is called from the game engine for calculating total wage of the acting character's party (coop_my_party) which is shown at the party window.
   # Input: none
   # Output: reg0: weekly wage
   
   ("game_get_total_wage",
     [
+      (call_script, "script_coop_my_party"),
+      (assign, ":party_no", reg0),
       (assign, ":total_wage", 0),
-      (party_get_num_companion_stacks, ":num_stacks", "p_main_party"),
+      (party_get_num_companion_stacks, ":num_stacks", ":party_no"),
       (try_for_range, ":i_stack", 0, ":num_stacks"),
-        (party_stack_get_troop_id, ":stack_troop", "p_main_party", ":i_stack"),
-        (party_stack_get_size, ":stack_size", "p_main_party", ":i_stack"),
-        (call_script, "script_game_get_troop_wage", ":stack_troop", 0),
+        (party_stack_get_troop_id, ":stack_troop", ":party_no", ":i_stack"),
+        (party_stack_get_size, ":stack_size", ":party_no", ":i_stack"),
+        (call_script, "script_game_get_troop_wage", ":stack_troop", ":party_no"),
         (val_mul, reg0, ":stack_size"),
         (val_add, ":total_wage", reg0),
       (try_end),
@@ -23493,6 +23511,11 @@ scripts = [
             (str_store_troop_name_link, s2, ":troop_no"),
             (str_store_faction_name_link, s3, ":faction_no"),
             (display_log_message, "@{s1} has been besieged by {s2} of {s3}."),
+            # The game log never reaches the dedicated server console.
+            (try_begin),
+              (multiplayer_is_dedicated_server),
+              (display_message, "@{s1} has been besieged by {s2} of {s3}."),
+            (try_end),
             (try_begin),
               (store_faction_of_party, ":ai_object_faction", ":ai_object"),
               (this_or_next|party_slot_eq, ":ai_object", slot_town_lord, "trp_player"),
@@ -26178,7 +26201,7 @@ scripts = [
       (troop_set_slot, ":troop_no", slot_troop_occupation, slto_player_companion),
       (troop_set_slot, ":troop_no", slot_troop_cur_center, -1),
       (troop_set_auto_equip, ":troop_no", 0),
-      (call_script, "script_coop_visit_my_party"),
+      (call_script, "script_coop_my_party"),
       (party_add_members, reg0, ":troop_no", 1),
       (call_script, "script_coop_tavern_queue_recruit", ":troop_no"),
       (str_store_troop_name, s6, ":troop_no"),
@@ -51080,15 +51103,20 @@ scripts = [
 	]),
 
 	#script_wse_game_saved
-	# Called each time after game is saved successfully
+	# Called after every save attempt; the engine also calls it when the
+	# write failed, so the line reports completion, not success.
 	("wse_game_saved", [
-		# (store_script_param, ":savegame_no", 1),
+		(store_script_param, ":savegame_no", 1),
+		(assign, reg0, ":savegame_no"),
+		(display_message, "@[WORLD SAVE] finished, slot {reg0}"),
 	]),
 
 	#script_wse_savegame_loaded
-	# Called each time after savegame is loaded successfully
+	# Called each time after savegame is loaded successfully. The campaign
+	# server loads before its network server starts; re-arming the startup
+	# block runs coop_server_session_reset on the loaded world's first frame.
 	("wse_savegame_loaded", [
-		# (store_script_param, ":savegame_no", 1),
+		(assign, "$g_coop_server_ip_loaded", 0),
 	]),
 
 	#script_wse_chat_message_received
@@ -51153,7 +51181,7 @@ scripts = [
 				(str_store_string, s1, "@campaign_save"),
 				(str_store_replace_spaces_with_underscores, s1, s1),
 				(str_equals, s30, s1),
-				(auto_save),
+				(call_script, "script_coop_world_save"),
 				(set_result_string, "@Campaign is saved"),
 			(else_try),
 				(assign, ":fail", 1),

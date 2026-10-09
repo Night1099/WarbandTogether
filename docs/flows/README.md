@@ -32,10 +32,10 @@ documents — see the citation note above).
 |------|--------------------------|
 | Battle pipeline | `docs/archive/BATTLE_RESULTS_PIPELINE_AUDIT.md`, `patches/WarbandDedicated/findings.md`, `docs/archive/2026-03-22-warband-coop-campaign-sync-design.md` |
 | Siege | `docs/plans/siege-coop-plan.md`, `battle-pipeline.md` shared tail |
-| XP sync | `docs/archive/SYNC_REDESIGN.md`, `docs/sync-systems/`, `patches/Warband/findings.md` (kill-XP paths), `patches/WSE2Dedicated/kb.h` |
+| XP sync | `docs/archive/SYNC_REDESIGN.md`, `docs/sync-systems/`, `patches/Warband/findings.md` (kill-XP paths), `patches/WarbandBattleDed/kb.h` (kill-XP paths) |
 | Inventory sync | `docs/archive/RE_NATIVE_SCREENS.md`, `docs/archive/SP_SCREEN_RECREATION.md` |
 | Party screen sync | `docs/archive/RE_NATIVE_SCREENS.md`, `docs/archive/Screen_Session.md` |
-| Campaign server tick | `patches/WSE2Dedicated/findings_campaign_periodic_load.md`, `patches/WarbandDedicated/findings.md` ("nettune patch sites", send-path Q1-Q7), `patches/WarbandDedicated/network_tick_rate.md`, `docs/wse2-binary-patches.md` |
+| Campaign server tick | `patches/WarbandDedicated/findings.md` ("Campaign server periodic load"; "nettune patch sites", send-path Q1-Q7), `patches/WarbandDedicated/network_tick_rate.md`, `docs/wse2-binary-patches.md` |
 | Steam P2P tunnel | `docs/archive/STEAM_P2P_FACTS.md`, `docs/archive/NETWORKING_AUDIT.md`, `docs/archive/TRAFFIC_OPTIMIZATION.md`, `patches/Warband_WSE2/findings.md` ("SteamAPI_RunCallbacks pump audit", "Loopback join classification", "Phase 4 invites+password RE" Q5–Q11) |
 
 RE symbol knowledge lives in `patches/<project>/kb.h`; narratives in

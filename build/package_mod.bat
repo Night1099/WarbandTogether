@@ -3,7 +3,7 @@ REM package_mod.bat -- assemble a shareable coop mod package
 REM
 REM Collects the module data, DLLs, ASIs, configs, and server scripts from
 REM the game directory and this repo, then zips them into
-REM   %COOP_PKG_DIR%\warband_coop_<timestamp>.zip   (default: Z:\)
+REM   %COOP_PKG_DIR%\warband_coop_<timestamp>.zip   (default: <repo>\dist)
 REM
 REM Layout of the produced zip mirrors the Warband install root, so the
 REM recipient can extract into their MountBlade Warband directory directly.
@@ -18,7 +18,7 @@ for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
 call "%~dp0find_gamedir.bat"
 set "GAME_DIR=%GAMEDIR%"
 set "MODULE_NAME=NativeCoop"
-if not defined COOP_PKG_DIR set "COOP_PKG_DIR=Z:\"
+if not defined COOP_PKG_DIR set "COOP_PKG_DIR=%REPO_ROOT%\dist"
 set "DEST_DIR=%COOP_PKG_DIR%"
 if "%DEST_DIR:~-1%"=="\" set "DEST_DIR=%DEST_DIR:~0,-1%"
 if not defined WSE2_ZIP set "WSE2_ZIP=%REPO_ROOT%\third_party\WSE2.zip"
@@ -50,6 +50,14 @@ if not defined TIMESTAMP set "TIMESTAMP=%RANDOM%%RANDOM%"
 
 set "ZIP_NAME=warband_coop_%TIMESTAMP%.zip"
 set "ZIP_PATH=%DEST_DIR%\%ZIP_NAME%"
+
+REM ---- Destination pre-flight (fail fast on an unmounted drive) ----------
+
+if /i "%DEST_DIR%"=="%REPO_ROOT%\dist" if not exist "%DEST_DIR%\" mkdir "%DEST_DIR%"
+if not exist "%DEST_DIR%\" (
+    echo ERROR: package destination "%DEST_DIR%" does not exist ^(set COOP_PKG_DIR^)
+    exit /b 1
+)
 
 REM ---- Staging ----------------------------------------------------------
 

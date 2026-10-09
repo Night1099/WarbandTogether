@@ -85,7 +85,6 @@ static char g_host_ip_lan[64]   = "127.0.0.1";
 static int  g_port              = 7240;
 static int  g_battle_port       = 7241;
 static char g_module_name[64]   = "NativeCoop";
-static char g_module_label[64]  = "Calradia";  /* module_name from module.ini, used for server list filter */
 static char g_game_dir[MAX_PATH] = "";          /* game directory (dirname of exe), set at DLL load */
 static char g_password[64]      = "";          /* [Coop] Password -- never logged, never sent over the tunnel */
 static steam_cfg_t g_steam_cfg;
@@ -108,12 +107,11 @@ static void read_config(HINSTANCE hinstDLL) {
     GetPrivateProfileStringA("Coop", "HostIP",  "127.0.0.1",  g_host_ip,     sizeof(g_host_ip),    ini_path);
     lstrcpynA(g_host_ip_lan, g_host_ip, sizeof(g_host_ip_lan));
     GetPrivateProfileStringA("Coop", "Module",  "NativeCoop",  g_module_name,  sizeof(g_module_name),  ini_path);
-    GetPrivateProfileStringA("Coop", "ModuleLabel", "Calradia", g_module_label, sizeof(g_module_label), ini_path);
     g_port        = GetPrivateProfileIntA("Coop", "Port",       7240, ini_path);
     g_battle_port = GetPrivateProfileIntA("Coop", "BattlePort", 7241, ini_path);
     GetPrivateProfileStringA("Coop", "Password", "", g_password, sizeof(g_password), ini_path);
-    coop_log("config: host=%s port=%d battle=%d module=%s label=%s password=%s\n",
-             g_host_ip, g_port, g_battle_port, g_module_name, g_module_label,
+    coop_log("config: host=%s port=%d battle=%d module=%s password=%s\n",
+             g_host_ip, g_port, g_battle_port, g_module_name,
              g_password[0] != '\0' ? "set" : "none");
     /* write_string_register clamps to 47 chars (s57's rglString SSO); a longer
        password works for the campaign join but silently truncates on every
@@ -354,7 +352,7 @@ static void inject_server(void *browser_window) {
     fill_list(browser_window, NULL);
 
     coop_log("server injected: %s:%d name='COOP Direct' module=%s\n",
-             host_ip, g_port, g_module_label);
+             host_ip, g_port, g_module_name);
 
     /* Cleanup local (vector made a copy) */
     server_dtor((void *)server, NULL);

@@ -193,6 +193,8 @@ multiplayer_event_multiplayer_campaign_server_event_center_encounter   = 27
 multiplayer_event_multiplayer_campaign_server_event_center_locked      = 28
 multiplayer_event_multiplayer_campaign_server_event_center_trade_price = 29
 multiplayer_event_multiplayer_campaign_server_event_trade_merchant_slot = 30
+# Marketplace stock sent (ev 30); int1 = the merchant's gold. The client
+# sets it on trp_find_item_cheat and opens the trade screen.
 multiplayer_event_multiplayer_campaign_server_event_trade_sync_done    = 31
 multiplayer_event_multiplayer_campaign_server_event_trade_gold_sync    = 32
 multiplayer_event_multiplayer_campaign_server_event_recruit_data       = 33
@@ -225,7 +227,8 @@ multiplayer_event_multiplayer_campaign_server_event_battle_slot_closed  = 45
 multiplayer_event_multiplayer_campaign_server_event_visit_npc         = 52
 multiplayer_event_multiplayer_campaign_server_event_visit_roster_done = 53
 # In-scene trade stock, pushed with the roster: (merchant troop, slot, item,
-# imod) into the client's copy of the real merchant troop; slot -1 clears.
+# imod) into the client's copy of the real merchant troop; slot -1 clears
+# and its third int is the merchant's gold.
 multiplayer_event_multiplayer_campaign_server_event_visit_merchant_slot = 54
 # Relation sync: one relation per event. int1 = relation id (troop id, or
 # -1 - center party id), int2 = value + 100, int3 = met | (delta + 128) << 1;
@@ -257,8 +260,13 @@ multiplayer_event_multiplayer_campaign_server_event_tavern_slot = 61
 # Persuade lords to make peace: int1 = quest_no, int2 = lord 1 (native's
 # target troop) + 1 (bits 0-11) | its faction (12-19) | done (20) | locked
 # out of persuasion (21), int3 = the same for lord 2 (the object troop).
-# Sent right before the offer (57) or state (58) it belongs to. 63 free.
+# Sent right before the offer (57) or state (58) it belongs to.
 multiplayer_event_multiplayer_campaign_server_event_quest_lords = 62
+# Wages (coop_wage_send_report): int1 = the payday's wage total (bits 0-23)
+# | half days this week (24-27) | payday (28), int2 = paid, int3 = debt
+# after. Sent at hydrate, when a half day is counted and on each payday.
+# 64 free.
+multiplayer_event_multiplayer_campaign_server_event_wage_report = 63
 
 #multiplayer campaign client events
 multiplayer_event_multiplayer_campaign_leave_encounter = 0
@@ -343,6 +351,11 @@ multiplayer_event_multiplayer_campaign_quest_convince      = 38
 # party there. a = x, b = y (fixed point 1000). The server ignores it unless
 # $g_coop_debug_reveal is set.
 multiplayer_event_multiplayer_campaign_debug_teleport = 39
+
+# Debug launcher only: Ctrl + V on the map makes the Kingdom of Vaegirs
+# declare war on the players. a = the kingdom's faction id. The server
+# ignores it unless $g_coop_debug_reveal is set.
+multiplayer_event_multiplayer_campaign_debug_declare_war = 40
 
 #multiplayer message types
 multiplayer_message_type_auto_team_balance_done      = 2

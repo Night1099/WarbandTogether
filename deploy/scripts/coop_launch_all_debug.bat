@@ -5,4 +5,6 @@ rem map-visible (no fog of war) for debugging. The flag reaches the module
 rem through the campaign server's environment: the host plugin reads
 rem COOP_DEBUG_REVEAL and writes it into "coop server cfg campaign.wsedict".
 set COOP_DEBUG_REVEAL=1
+rem Debug sessions keep their own world, sg01.sav.
+set COOP_SAVE_NO=1
 call "%~dp0coop_launch_all.bat" %*

@@ -4,11 +4,11 @@ How far coop is from Warband's single-player campaign, feature by feature, follo
 
 | Milestone | Done |
 |---|---|
-| Adventurer | 23 / 113 |
+| Adventurer | 28 / 117 |
 | Mercenary & vassal | 1 / 18 |
 | Lord | 0 / 8 |
 | Sovereign | 0 / 2 |
-| Full parity | 10 / 30 |
+| Full parity | 10 / 27 |
 
 ## Adventurer
 
@@ -22,7 +22,7 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Companion equipment and skill points | Character & party | Known issue | Items you hand to a companion can be lost; don't give companions equipment yet. |
 | Inventory and equipment | Character & party | Works |  |
 | Party and troop upgrades | Character & party | Partly works | Recruiting and upgrading work, but party size is not limited by leadership yet. |
-| Weekly wages | Character & party | Planned | Troops do not cost weekly wages yet. |
+| Weekly wages | Character & party | Works | Your troops cost weekly wages, paid from your gold; unpaid wages become debt. |
 | Party morale | Character & party | Planned | Party morale does not change yet. |
 | Food and supplies | Character & party | Planned | Your party does not eat food yet, and food never spoils. |
 | Taking and keeping prisoners | Character & party | Works |  |
@@ -67,7 +67,7 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Street fights and night bandits | Towns | Works |  |
 | Training grounds | Towns | Planned | Training grounds are not available yet. |
 | Greetings from townsfolk, guards and soldiers | Towns | Not yet assessed |  |
-| Enemy towns and castles turn players away | Towns | Known issue | Enemy towns and castles do not turn players away yet. |
+| Enemy towns and castles turn players away | Towns | Works | Enemy towns and castles turn players away. |
 | Giving money to the poor in town | Towns | Known issue | Giving money to the poor in town does not work correctly yet. |
 | Village menu and elder | Villages | Partly works | Villages can be visited and the elder talked to, but a looted or bandit-held village is not closed off yet. |
 | Recruiting volunteers | Villages | Partly works | Recruiting volunteers works from the village menu, but prices and who may recruit differ from single player, and asking the elder does nothing yet. |
@@ -99,6 +99,7 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Talking to companions in your party | Lords, ladies & companions | Not yet assessed |  |
 | Companion complaints and departures | Lords, ladies & companions | Planned | Companions never complain, quarrel or leave the party. |
 | Starting companion shared between players | Lords, ladies & companions | Known issue | Two players can end up with the same starting companion. |
+| Saving and loading | Meta | Works | The campaign server saves the shared world every 20 minutes of play and when the last player leaves, and continues it on the next start. |
 | Battle servers and the battle chooser | Coop features | In testing |  |
 | In-battle menus (Esc menu, game rules, troop choice, admin panel) | Coop features | In testing |  |
 | Changing equipment before spawning in a battle | Coop features | Not yet assessed |  |
@@ -129,6 +130,9 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Battle names pushed to players (faction, troop classes, heroes) | Stability | Not yet assessed |  |
 | Server path-finding patch check | Stability | Not yet assessed |  |
 | Public build on a clean machine | Stability | Not yet assessed |  |
+| Developer analysis tools kept current | Stability | Works | Internal tooling fix, no player-visible effect. |
+| Developer build and test tools | Stability | Works | Internal developer tooling, no effect on play. |
+| Players inside a besieged center keep their troops | Stability | Known issue | A player waiting inside a town or castle that comes under AI assault can lose troops without being asked. |
 
 ## Mercenary & vassal
 
@@ -200,7 +204,6 @@ Everything left, including meta and reports.
 | Game log | Reports & screens | Not yet assessed |  |
 | Date and money texts | Reports & screens | In testing |  |
 | Map right-click menu | Reports & screens | Not yet assessed |  |
-| Saving and loading | Meta | Partly works | The shared world is only saved when the host saves it from the server console; characters save on their own. |
 | Character saving (per player) | Meta | Works |  |
 | Pausing the campaign (host) | Meta | Known issue | The host's pause command does not actually pause the campaign. |
 | Options and controls | Meta | Not yet assessed |  |
@@ -212,8 +215,6 @@ Everything left, including meta and reports.
 | Unused native content | Meta | Not in coop | Leftover content that native Warband never uses is not part of coop. |
 | Internal cleanup: unused start-location message | Stability | Planned | Internal cleanup: an unused network message is still defined. |
 | Internal engine-hook cleanup | Stability | Planned | Internal code cleanup, no player-visible effect. |
-| Developer analysis tools kept current | Stability | Known issue | Internal tooling fix, no player-visible effect. |
-| Developer build and test tools | Stability | Known issue | Internal developer tooling, no effect on play. |
 | Internal code cleanup | Stability | Planned | Internal cleanup, no effect on play. |
 
 ## Outside the campaign

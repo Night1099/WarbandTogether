@@ -2976,18 +2976,18 @@ dialogs = [
    ],
    "{s5}", "companion_recruit_signup_response", []],
 
-  [anyone|plyr, "companion_recruit_signup_response", [(call_script, "script_coop_visit_my_party"), (neg|hero_can_join, reg0),], "Unfortunately, I can't take on any more hands in my party right now.", "close_window", [
+  [anyone|plyr, "companion_recruit_signup_response", [(call_script, "script_coop_my_party"), (neg|hero_can_join, reg0),], "Unfortunately, I can't take on any more hands in my party right now.", "close_window", [
      ]],
 
   [anyone|plyr, "companion_recruit_signup_response", [
-                    (call_script, "script_coop_visit_my_party"),
+                    (call_script, "script_coop_my_party"),
                     (hero_can_join, reg0),
                     (troop_get_slot, ":signup_response", "$g_talk_troop", slot_troop_signup_response_1),
                     (str_store_string, 6, ":signup_response")
       ], "{s6}", "companion_recruit_payment", []],
 
   [anyone|plyr, "companion_recruit_signup_response", [
-                    (call_script, "script_coop_visit_my_party"),
+                    (call_script, "script_coop_my_party"),
                     (hero_can_join, reg0),
                      (troop_get_slot, ":signup_response", "$g_talk_troop", slot_troop_signup_response_2),
                      (str_store_string, 7, ":signup_response")
@@ -3009,10 +3009,10 @@ dialogs = [
    "{s5}", "companion_recruit_payment_response", []],
 
   [anyone|plyr, "companion_recruit_payment_response", [
-                    (call_script, "script_coop_visit_my_party"),
+                    (call_script, "script_coop_my_party"),
                     (hero_can_join, reg0),
                     (troop_get_slot, ":amount_requested", "$g_talk_troop", slot_troop_payment_request),#
-                    (call_script, "script_coop_visit_my_troop"),
+                    (call_script, "script_coop_my_troop"),
                     (store_troop_gold, ":gold", reg0),#
                     (ge, ":gold", ":amount_requested"),#
                     (assign, reg3, ":amount_requested"),
@@ -3022,7 +3022,7 @@ dialogs = [
       ], "{s6}", "companion_recruit_signup_confirm", [
                     (troop_get_slot, ":amount_requested", "$g_talk_troop", slot_troop_payment_request),#
                     (gt, ":amount_requested", 0),#
-                    (call_script, "script_coop_visit_my_troop"),
+                    (call_script, "script_coop_my_troop"),
                     (troop_remove_gold, reg0, ":amount_requested"),  #                  
                     (troop_set_slot, "$g_talk_troop", slot_troop_payment_request, 0),#
           ]],
@@ -17857,10 +17857,10 @@ I suppose there are plenty of bounty hunters around to get the job done . . .", 
   [anyone,"convince_bribe", [], "Mmm, a generous gift to my coffers would certainly help matters...\
  {reg8} denars should do it. If you agree, then I'll go with your suggestion.", "convince_bribe_verify",[]],
 
-  [anyone|plyr,"convince_bribe_verify", [(call_script, "script_coop_visit_my_troop"), (store_troop_gold, ":gold", reg0),
+  [anyone|plyr,"convince_bribe_verify", [(call_script, "script_coop_my_troop"), (store_troop_gold, ":gold", reg0),
                                          (lt, ":gold", "$convince_value")],
    "I'm afraid my finances will not allow for such a gift.", "convince_bribe_cant_afford",[]],
-  [anyone|plyr,"convince_bribe_verify", [(call_script, "script_coop_visit_my_troop"), (store_troop_gold, ":gold", reg0),
+  [anyone|plyr,"convince_bribe_verify", [(call_script, "script_coop_my_troop"), (store_troop_gold, ":gold", reg0),
                                          (ge, ":gold", "$convince_value")],
   "Very well, please accept these {reg8} denars as a token of my gratitude.", "convince_bribe_goon",[]],
   [anyone|plyr,"convince_bribe_verify", [], "Let me think about this some more.", "convince_begin",[]],
@@ -17869,7 +17869,7 @@ I suppose there are plenty of bounty hunters around to get the job done . . .", 
  unless you have some further argument to make.", "convince_options",[]],
    [anyone,"convince_bribe_goon", [], "My dear {playername}, your generous gift has led me to reconsider what you ask,\
  and I have come to appreciate the wisdom of your proposal.", "convince_accept",
-   [(call_script, "script_coop_visit_my_troop"),
+   [(call_script, "script_coop_my_troop"),
     (troop_remove_gold, reg0, "$convince_value"),
     (try_begin),
       (call_script, "script_cf_coop_quest_convince_report", coop_quest_convince_bribe, 0),
@@ -20166,12 +20166,12 @@ I suppose there are plenty of bounty hunters around to get the job done . . .", 
   ]],
   
   [anyone|plyr,"ransom_broker_ransom_companion_verify",[
-  (call_script, "script_coop_visit_my_troop"),
+  (call_script, "script_coop_my_troop"),
   (store_troop_gold, ":player_gold", reg0),
   (ge, ":player_gold", "$companion_ransom_amount"),
   
   ], "Here's your money.", "ransom_broker_ransom_companion_accept",[
-  (call_script, "script_coop_visit_my_troop"),
+  (call_script, "script_coop_my_troop"),
   (troop_remove_gold, reg0, "$companion_ransom_amount"),
   
   
@@ -21354,10 +21354,10 @@ I suppose there are plenty of bounty hunters around to get the job done . . .", 
                      (call_script, "script_game_get_join_cost", ":mercenary_troop"),
                      (assign, ":join_cost", reg0),
                      (store_mul, reg5, ":mercenary_amount", reg0),
-                     (call_script, "script_coop_visit_my_party"),
+                     (call_script, "script_coop_my_party"),
                      (party_get_free_companions_capacity, ":free_capacity", reg0),
                      (val_min, ":mercenary_amount", ":free_capacity"),
-                     (call_script, "script_coop_visit_my_troop"),
+                     (call_script, "script_coop_my_troop"),
                      (store_troop_gold, ":cur_gold", reg0),
                      (try_begin),
                        (gt, ":join_cost", 0),
@@ -21423,16 +21423,16 @@ I suppose there are plenty of bounty hunters around to get the job done . . .", 
                                           (party_get_slot, ":mercenary_troop", "$g_encountered_party", slot_center_mercenary_troop_type),
                                           (call_script, "script_game_get_join_cost", ":mercenary_troop"),
                                           (store_mul, ":total_cost", "$temp", reg0),
-                                          (call_script, "script_coop_visit_my_troop"),
+                                          (call_script, "script_coop_my_troop"),
                                           (troop_remove_gold, reg0, ":total_cost"),
-                                          (call_script, "script_coop_visit_my_party"),
+                                          (call_script, "script_coop_my_party"),
                                           (party_add_members, reg0, ":mercenary_troop", "$temp"),
                                           (party_set_slot, "$g_encountered_party", slot_center_mercenary_troop_amount, 0),
                                           (call_script, "script_coop_tavern_queue_hire", ":mercenary_troop", "$temp"),
                                           ]],
 
   [anyone|plyr, "mercenary_tavern_talk", [(eq, "$temp", 0),
-                                          (call_script, "script_coop_visit_my_party"),
+                                          (call_script, "script_coop_my_party"),
                                           (party_get_free_companions_capacity, ":free_capacity", reg0),
                                           (ge, ":free_capacity", 1)],
    "That sounds good. But I can't afford to hire any more men right now.", "tavern_mercenary_cant_lead", []],
@@ -21441,7 +21441,7 @@ I suppose there are plenty of bounty hunters around to get the job done . . .", 
  if you need to hire anyone.", "close_window", []],
   
   [anyone|plyr, "mercenary_tavern_talk", [(eq, "$temp", 0),
-                                          (call_script, "script_coop_visit_my_party"),
+                                          (call_script, "script_coop_my_party"),
                                           (party_get_free_companions_capacity, ":free_capacity", reg0),
                                           (eq, ":free_capacity", 0)],
    "That sounds good. But I can't lead any more men right now.", "tavern_mercenary_cant_lead", []],

@@ -9,7 +9,8 @@ This is the ONLY module system directory. There is no other copy. All edits go h
 ## Prerequisites
 
 - Python 2.7 at `C:\Python27\python.exe` (the classic Warband module system does not run on Python 3)
-- Mount & Blade: Warband installed (Steam), with the WSE2 rev-1145 binaries in the game directory
+- Visual Studio with the MSVC x86 toolset (C layer)
+- Mount & Blade: Warband 1.174 installed (Steam), with the WSE2 rev-1145 binaries in the game directory. WSE2 is **pinned at revision 1145** (v1.1.4.5, Mar 2026): every hook address and binary patch is keyed to those exact binaries, so a different WSE2 build will not work. Release zips ship them pre-patched; from source, apply the four client exe patches in `docs/wse2-binary-patches.md`
 - A `Modules\NativeCoop\` directory in the game install
 - `wse2work/Native-Coop-master/module_info.py` — set `export_dir` to your game's `Modules/NativeCoop/` path (this is where the build writes its output)
 
@@ -219,7 +220,11 @@ Automatic — every successful C build ends with a call to `build\deploy.bat`, w
 
 Run `build\deploy.bat` standalone to deploy without rebuilding. If the game or a server is running, the locked file is skipped with a WARN — close them and rerun.
 
-`build\deploy.bat` also deploys `lua\main.lua` to `Modules/COOP/lua/` if present, and finishes by invoking `build\package_mod.bat` to produce a shareable client zip (packaging failure does not fail the deploy).
+`build\deploy.bat` also deploys `lua\main.lua` to `Modules/COOP/lua/` if present. It does not
+package: `build\package_mod.bat` is the manual release step (see CLAUDE.md "Public Export"),
+run on purpose by the maintainer. It writes `dist\warband_coop_<timestamp>.zip` by default
+(`dist\` is gitignored); set `COOP_PKG_DIR` to write elsewhere, and the script exits with an
+error before staging when that destination does not exist.
 
 ## coop.ini
 
@@ -231,9 +236,27 @@ Port=7240
 HostIP=127.0.0.1
 BattlePort=7241
 Module=NativeCoop
+Password=              ; pool-wide join password, max 47 chars; empty = open
+
+[NetTuning]            ; read by the dedicated exes at startup
+AimdFloor=16000        ; congestion-control floor (stock 3000)
+AimdStep=8000          ; recovery step (stock 1000)
+PacketMaxSize=1200     ; stock 1350 — 1200 fits Steam's measured budget
+SendRateHz=30          ; 30 (stock) or 62
+BacklogPeriodMs=33     ; send-period ceiling while a player has a backlog (stock 100 = 10 Hz)
+
+[Steam]                ; read by the client ASI only
+; SteamHost=1          ; on the HOST machine — publishes the "Join Game" button
+; AllowedSteamIDs=     ; host: comma-separated allowlist; EMPTY ACCEPTS ANYONE
+; HostSteamID64=       ; on a JOINER machine — 17 digits; ignored if invited
+; Debug=1              ; verbose GameNetworkingSockets logging
 ```
 
-There is no mode key — server role comes from the exe name. On each **client** machine, set `HostIP` to the campaign server's IP: battle joins build their address from it, and the `127.0.0.1` default silently bounces battle joins back to the MP menu. The template also carries `Password=` (pool-wide join password), the `[NetTuning]` knobs read by the dedicated exes, and the `[Steam]` tunnel keys read by the client ASI — see the `coop.ini` section of `README.md` for the full key list.
+There is no mode key — server role comes from the exe name. On each **client** machine, set `HostIP` to the campaign server's IP: battle joins build their address from it (the ASI writes it into string register s59), and the `127.0.0.1` default silently bounces battle joins back to the MP menu. Steam-tunnel joiners are the exception: an accepted invite or a configured `HostSteamID64` re-aims every coop address at loopback.
+
+Two templates exist: `deploy/coop.ini` is the source-build template that `build\deploy.bat` installs into the game directory if missing, and `deploy/coop_client.ini` is packaged into release zips as `coop.ini.example` (renamed to `coop.ini` on first install so extract-over-install never clobbers a configured one).
+
+`AllowedSteamIDs` is the tunnel's only access control, and an **empty value accepts any SteamID** — if you leave it empty, set a `Password=`.
 
 ## Common Errors
 
@@ -245,7 +268,54 @@ There is no mode key — server role comes from the exe name. On each **client**
 | Illegal Identifier: itm_cross_end | Missing Battle Time reference | Already fixed — stub definitions are in the module source |
 | Invalid Scene_prop ID: -1 | Missing Battle Time scene prop | Already fixed — stub definitions are in the module source |
 
+## Architecture
+
+Three processes cooperate:
+
+```
+CLIENT (mb_warband_wse2.exe + warband_coop.asi)
+  |  MP browser join (port 7240)   |  B-key battle chooser (port 7241 + 2*slot)
+  v                                 v
+CAMPAIGN SERVER (dedicated campaign + CoopWSEPlugin.dll via winmm proxy)
+  |  ENet IPC (port 7242, persistent per-slot connection)
+  v
+BATTLE SERVER POOL (up to 4x dedicated + CoopWSEPlugin.dll via winmm proxy)
+  slot s (0-3): port 7241+2s, identity from COOP_BATTLE_SLOT env var
+```
+
+1. **Campaign server** runs WSE2 dedicated campaign mode: parties, encounters, diplomacy, time. All persistent player state lives in per-player `.wsedict` dict files — the server is authoritative; clients receive pushes and send back deltas over the campaign event channels.
+2. When players encounter an enemy, the campaign server allocates a free battle slot, writes battle data (scene, factions, troop stacks) to that slot's dict file, and signals the slot's battle server over ENet IPC. All clients are told which port the battle is on.
+3. **Battle server** loads the battle; the initiator auto-connects, everyone else can press B and pick the battle from the chooser. Players spawn with their campaign stats and equipment and fight one life.
+4. Battle end writes casualties back to the dict; when participants rejoin the campaign map, the server applies losses, wounds, and XP shares and frees the slot.
+5. Small fights and sieges can instead run **locally** on the client as singleplayer missions, reporting the outcome through the same result pipeline.
+
+`docs/flows/` holds one dossier per core flow (battle pipeline, siege, XP sync, inventory sync, party-screen sync, Steam tunnel, campaign server tick).
+
 ## File Structure
+
+```
+src/asi/coop.c          — Client ASI: browser injection, engine hooks, auto-connect
+src/asi/steam_tunnel.c  — Steam P2P tunnel: host bridge / joiner proxy / dormant invite standby
+src/asi/steam_flat.c    — Flat-API bindings for steam_api_wse2.dll (Sockets, Utils, Friends, User)
+src/                    — Host plugin: coop_campaign.c / plugin_main.cpp; battle_ipc.h (IPC wire)
+src/shared/             — Shared C: hooks, battle-server ENet IPC, wsedict, module globals,
+                          nettune.c (dedicated-exe net patches), crash reporting,
+                          engine address tables (warband_addrs_wse2.c/h)
+src/loader/             — winmm.dll proxy that loads the plugin on dedicated servers
+asi_loader/             — dinput8.dll proxy ASI loader (client)
+build/                  — Build scripts; deploy.bat runs after every successful build
+bin/                    — Build outputs (not tracked)
+enet/                   — Vendored ENet
+wse2work/Native-Coop-master/   — Module system (the bulk of the mod's logic)
+  module_scripts.py            — Vanilla campaign logic; forwards network events to the coop dispatchers
+  module_coop_scripts.py       — All coop logic: persistence, lifecycle, dispatchers, battle pipeline, char sync
+  module_coop_mission_templates.py — Coop battle mission template
+  module_game_menus.py         — Encounter flow, battle launch
+deploy/                 — Server configs, launch scripts, coop.ini template
+docs/                   — INSTALL.md, BUILD.md, RELEASE_0.0.8.md, wse2-binary-patches.md, flows/ (per-flow dossiers)
+```
+
+Module system:
 
 ```
 wse2work/Native-Coop-master/

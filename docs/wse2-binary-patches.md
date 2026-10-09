@@ -129,9 +129,8 @@ ceiling at a plugin-owned float (verify-before-write on the slid operand):
 With 33 the backlog arm collapses to `m_packetSendPeriod`, i.e. a
 backlogged player drains at its normal rate. It cannot go faster than
 that period — `max()` dominates — so AIMD (`AimdFloor`/`AimdStep`) remains
-the bandwidth authority. RE: `patches/WSE2Dedicated/findings_campaign_periodic_load.md`
-and the 2026-09-20 backlog-period RE (deployed 1145 exes; the Ghidra
-project under `patches/WSE2Dedicated` is stale).
+the bandwidth authority. RE: `patches/WarbandDedicated/findings.md` ("Campaign server periodic
+load") and the 2026-09-20 backlog-period RE (deployed 1145 exes).
 
 ---
 

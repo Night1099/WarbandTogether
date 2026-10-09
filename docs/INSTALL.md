@@ -2,10 +2,10 @@
 
 > **⚠️ Disclaimer** this is **not a fully playable mod yet**. The
 > core coop loops below work in testing, but do not expect a full campaign
-> playthrough — your character persists on the host (autosaved every 5
-> minutes and on disconnect), but full campaign world state (fiefs,
-> quests, diplomacy/wars) is only saved if the host keeps the server
-> process running or manually saves; battle loot and the defeat path
+> playthrough — your character persists on the host (autosaved about every
+> 20 minutes of play and on disconnect), and the campaign world is saved on
+> the same cadence and when the last player leaves, then continued on the
+> next server start; battle loot and the defeat path
 > aren't fully wired up yet, some siege and economy behavior diverges
 > from singleplayer, and longer sessions will hit bugs and desyncs. Grab
 > the current build from the
@@ -102,6 +102,18 @@ coop_launch_all.bat
 This starts the campaign server, 2 battle servers, and your game client.
 Want more simultaneous battles? `coop_launch_all.bat 4` (4 is the max).
 Leave the black console windows open while you play.
+
+The campaign server continues the same world every time you start it
+(the save is `sg00.sav` in
+`Documents\Mount&Blade Warband WSE2\NativeCoop\Savegames\`). To start a
+new world, delete or move that file before launching. Do the same after
+installing a new release: a world saved by an older build may not load
+correctly into a newer one. Typing `campaign_save` in the campaign
+server's console saves the world at any time. Before closing the campaign
+server window, type `campaign_save` (or wait for `[WORLD SAVE] finished`
+after the last player has left), or the world loses everything since the
+last save. The debug launcher (`coop_launch_all_debug.bat`) keeps its own
+world in `sg01.sav`.
 
 ---
 

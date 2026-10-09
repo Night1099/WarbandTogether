@@ -7197,6 +7197,17 @@ coop_scripts = [
 
   ]),
 
+  # Client: set a troop's gold to the server's value (troop gold does not
+  # replicate). Input: troop, gold.
+  ("coop_client_set_troop_gold",
+    [
+      (store_script_param, ":troop_no", 1),
+      (store_script_param, ":gold", 2),
+      (store_troop_gold, ":cur", ":troop_no"),
+      (try_begin), (gt, ":cur", 0), (troop_remove_gold, ":troop_no", ":cur"), (try_end),
+      (try_begin), (gt, ":gold", 0), (troop_add_gold, ":troop_no", ":gold"), (try_end),
+  ]),
+
   ("coop_char_client_receive",
     [
       (store_script_param, ":event_type", 1),
@@ -7468,6 +7479,8 @@ coop_scripts = [
         (try_begin),
             (eq, ":slot", -1),
             (troop_clear_inventory, ":merchant_troop"),
+            # The clear carries the merchant's gold.
+            (call_script, "script_coop_client_set_troop_gold", ":merchant_troop", ":packed"),
         (else_try),
             (assign, ":item_id", ":packed"),
             (val_and, ":item_id", 0xFFFF),
@@ -7478,6 +7491,9 @@ coop_scripts = [
         (try_end),
       (else_try),
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_trade_sync_done),  # 31
+        # The merchant's gold, so the trade screen lets the player sell.
+        (store_script_param, ":merchant_gold", 2),
+        (call_script, "script_coop_client_set_troop_gold", "trp_find_item_cheat", ":merchant_gold"),
         (call_script, "script_coop_trade_snapshot_merchant", "trp_find_item_cheat"),
         # Record gold before trade for delta computation
         (multiplayer_get_my_player, ":my_player"),
@@ -7495,9 +7511,7 @@ coop_scripts = [
         (store_script_param, ":gold_val", 2),
         (multiplayer_get_my_player, ":my_player"),
         (player_get_troop_id, ":troop_no", ":my_player"),
-        (store_troop_gold, ":cg", ":troop_no"),
-        (try_begin), (gt, ":cg", 0), (troop_remove_gold, ":troop_no", ":cg"), (try_end),
-        (try_begin), (gt, ":gold_val", 0), (troop_add_gold, ":troop_no", ":gold_val"), (try_end),
+        (call_script, "script_coop_client_set_troop_gold", ":troop_no", ":gold_val"),
       (try_end),
   ]),
 
@@ -7880,6 +7894,31 @@ coop_scripts = [
        (assign, reg0, 1),
    ]),
 
+   # Writes the shared world to the server's slot file (sg00.sav with the
+   # launchers' --save-no 0). The only caller of auto_save: the write is
+   # synchronous and delays that frame's packets for every client.
+   ("coop_world_save",
+   [
+       (try_begin),
+           (multiplayer_is_server),
+           (multiplayer_is_campaign),
+           (store_current_hours, reg0),
+           (display_message, "@[WORLD SAVE] requested, hour {reg0}"),
+           (auto_save),
+       (try_end),
+   ]),
+
+   # Saves every connected player's character, then the world: one pass
+   # keeps the two stores at most one interval apart.
+   ("coop_save_all",
+   [
+       (try_for_players, ":player_no", 1),
+           (player_is_active, ":player_no"),
+           (call_script, "script_coop_save_character", ":player_no"),
+       (try_end),
+       (call_script, "script_coop_world_save"),
+   ]),
+
    ("coop_save_character",
    [
        # param 1: player_no
@@ -8210,6 +8249,19 @@ coop_scripts = [
            (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_ambush_total"),
            (dict_set_int, "$coop_char_dict", "@char_ambush_total", ":pv"),
        (try_end),
+       (try_begin),
+           (dict_has_key, "$coop_char_preserve_dict", "@char_wage_hours"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_wage_hours"),
+           (dict_set_int, "$coop_char_dict", "@char_wage_hours", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_wage_debt"),
+           (dict_set_int, "$coop_char_dict", "@char_wage_debt", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_wage_half_days"),
+           (dict_set_int, "$coop_char_dict", "@char_wage_half_days", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_wage_day"),
+           (dict_set_int, "$coop_char_dict", "@char_wage_day", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_wage_held"),
+           (dict_set_int, "$coop_char_dict", "@char_wage_held", ":pv"),
+       (try_end),
        (try_for_range, reg22, mayor_quests_begin, village_elder_quests_end),
            (dict_has_key, "$coop_char_preserve_dict", "@char_quest_{reg22}_status"),
            (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_quest_{reg22}_status"),
@@ -8311,11 +8363,16 @@ coop_scripts = [
            (try_for_range, ":attr", 0, num_coop_attrs),
                (assign, reg0, ":attr"),
                (str_store_string, s12, "@char_attr_{reg0}"),
-               (dict_get_int, ":val", "$coop_char_dict", s12),
+               (dict_get_int, ":target", "$coop_char_dict", s12),
                (store_attribute_level, ":cur", ":troop_no", ":attr"),
-               (val_sub, ":val", ":cur"),
+               (store_sub, ":val", ":target", ":cur"),
                (try_for_range, ":unused", 0, ":val"),
                    (troop_raise_attribute, ":troop_no", ":attr", 1),
+               (try_end),
+               # The troop may still hold a higher value from another character.
+               (try_begin),
+                   (lt, ":val", 0),
+                   (troop_set_attribute, ":troop_no", ":attr", ":target"),
                (try_end),
            (try_end),
 
@@ -8323,11 +8380,16 @@ coop_scripts = [
            (try_for_range, ":skl", 0, num_coop_skills),
                (assign, reg0, ":skl"),
                (str_store_string, s12, "@char_skl_{reg0}"),
-               (dict_get_int, ":val", "$coop_char_dict", s12),
+               (dict_get_int, ":target", "$coop_char_dict", s12),
                (store_skill_level, ":cur", ":skl", ":troop_no"),
-               (val_sub, ":val", ":cur"),
+               (store_sub, ":val", ":target", ":cur"),
                (try_for_range, ":unused", 0, ":val"),
                    (troop_raise_skill, ":troop_no", ":skl", 1),
+               (try_end),
+               # The troop may still hold a higher value from another character.
+               (try_begin),
+                   (lt, ":val", 0),
+                   (troop_set_skill, ":troop_no", ":skl", ":target"),
                (try_end),
            (try_end),
 
@@ -8335,11 +8397,16 @@ coop_scripts = [
            (try_for_range, ":wp", 0, 7),
                (assign, reg0, ":wp"),
                (str_store_string, s12, "@char_wp_{reg0}"),
-               (dict_get_int, ":val", "$coop_char_dict", s12),
+               (dict_get_int, ":target", "$coop_char_dict", s12),
                (store_proficiency_level, ":cur", ":troop_no", ":wp"),
-               (val_sub, ":val", ":cur"),
+               (store_sub, ":val", ":target", ":cur"),
                (try_for_range, ":unused", 0, ":val"),
                    (troop_raise_proficiency_linear, ":troop_no", ":wp", 1),
+               (try_end),
+               # The troop may still hold a higher value from another character.
+               (try_begin),
+                   (lt, ":val", 0),
+                   (troop_set_proficiency, ":troop_no", ":wp", ":target"),
                (try_end),
            (try_end),
 
@@ -8400,6 +8467,8 @@ coop_scripts = [
 
            # Equipment slots 0-9. has_key-guarded: dicts saved before slot 9
            # was persisted carry no @char_itm_9 and must not clear the slot.
+           # A saved empty slot is cleared: the troop may hold another
+           # character's item there.
            (try_for_range, ":slot", 0, 10),
                (assign, reg0, ":slot"),
                (str_store_string, s12, "@char_itm_{reg0}"),
@@ -8408,27 +8477,33 @@ coop_scripts = [
                    (dict_has_key, "$coop_char_dict", s12),
                    (dict_get_int, ":item", "$coop_char_dict", s12),
                    (dict_get_int, ":imod", "$coop_char_dict", s13),
-                   (is_between, ":item", 1, coop_new_items_end),
-                   (troop_set_inventory_slot, ":troop_no", ":slot", ":item"),
-                   (troop_set_inventory_slot_modifier, ":troop_no", ":slot", ":imod"),
+                   (try_begin),
+                       (is_between, ":item", 1, coop_new_items_end),
+                       (troop_set_inventory_slot, ":troop_no", ":slot", ":item"),
+                       (troop_set_inventory_slot_modifier, ":troop_no", ":slot", ":imod"),
+                   (else_try),
+                       (troop_set_inventory_slot, ":troop_no", ":slot", -1),
+                   (try_end),
                (try_end),
            (try_end),
            (call_script, "script_coop_check_item_bug", ":troop_no"),
 
-           # Bag inventory (slots 10-105)
+           # Bag inventory (slots 10-105). The saver writes only non-empty
+           # bag slots, so a missing key is an empty slot; clearing it drops
+           # whatever another character left on the troop.
            (try_for_range, ":slot", 10, 106),
                (assign, reg0, ":slot"),
                (str_store_string, s12, "@char_bag_{reg0}"),
                (try_begin),
                    (dict_has_key, "$coop_char_dict", s12),
                    (dict_get_int, ":item", "$coop_char_dict", s12),
+                   (is_between, ":item", 1, coop_new_items_end),
                    (str_store_string, s13, "@char_bag_mod_{reg0}"),
                    (dict_get_int, ":imod", "$coop_char_dict", s13),
-                   (try_begin),
-                       (is_between, ":item", 1, coop_new_items_end),
-                       (troop_set_inventory_slot, ":troop_no", ":slot", ":item"),
-                       (troop_set_inventory_slot_modifier, ":troop_no", ":slot", ":imod"),
-                   (try_end),
+                   (troop_set_inventory_slot, ":troop_no", ":slot", ":item"),
+                   (troop_set_inventory_slot_modifier, ":troop_no", ":slot", ":imod"),
+               (else_try),
+                   (troop_set_inventory_slot, ":troop_no", ":slot", -1),
                (try_end),
            (try_end),
 
@@ -9579,6 +9654,10 @@ coop_scripts = [
 			(call_script, "script_coop_save_character", ":player_no"),
 		(try_end),
 
+       # Wages: the client's debt mirror, before the char push carries the
+       # gold. Time away is never charged (played = 0).
+       (call_script, "script_coop_wage_tick", ":player_no", 1, 0),
+
        # Char sync must precede the inventory pushes: the engine bounds
        # troop_set_inventory_slot by getNumInventorySlots()+10 (skill-derived,
        # 30+6*IM+10), so bag slots above the IM-0 cap are silently dropped
@@ -9680,6 +9759,62 @@ coop_scripts = [
 		(try_end),
     ]),
 
+	# Resets every per-process campaign-server state. A world file carries
+	# module globals and party slots from the process that saved it, so the
+	# startup block calls this on a fresh start and again on a loaded world
+	# (wse_savegame_loaded re-arms the block). A latch a later feature adds
+	# for once-per-process work belongs here too.
+	("coop_server_session_reset", [
+		# A restart aborts every battle: clear each slot's dict and flags.
+		(try_for_range, ":bslot", 0, coop_battle_num_slots),
+			(dict_create, ":d"),
+			(call_script, "script_coop_battle_slot_dict_name", ":bslot"),
+			(dict_load_file, ":d", s41, 2),
+			(dict_set_int, ":d", "@battle_state", coop_battle_state_none),
+			(dict_save, ":d", s41),
+			(dict_free, ":d"),
+			(call_script, "script_coop_battle_slot_set_in_progress", ":bslot", 0),
+			(call_script, "script_coop_battle_slot_clear_ended", ":bslot"),
+		(try_end),
+
+		# Battle markers and quest escort stamps name a battle or a
+		# connection of the previous process; escorts hold until their
+		# owner hydrates again (coop_quest_unstamp_player).
+		(try_for_parties, ":mkp"),
+			(try_begin),
+				(party_slot_ge, ":mkp", slot_party_coop_battle_slot, 1),
+				(party_leave_cur_battle, ":mkp"),
+				(party_set_slot, ":mkp", slot_party_coop_battle_slot, 0),
+			(try_end),
+			(try_begin),
+				(party_slot_ge, ":mkp", slot_party_coop_quest_owner, 1),
+				(party_set_slot, ":mkp", slot_party_coop_quest_owner, 0),
+				(party_set_ai_behavior, ":mkp", ai_bhvr_hold),
+			(try_end),
+		(try_end),
+
+		(try_for_range, ":center", centers_begin, centers_end),
+			(party_set_slot, ":center", slot_center_coop_lock_player, -1),
+		(try_end),
+
+		# Every player party whose owner is not connected is treated as left:
+		# off the map and detached until hydrate re-enables it (the roster is
+		# rebuilt from the char dict, so the file's copy never doubles).
+		(store_sub, ":num_parties", multiplayer_campaign_player_parties_end, multiplayer_campaign_player_parties_begin),
+		(try_for_range, ":player_no", 0, ":num_parties"),
+			(neg|player_is_active, ":player_no"),
+			(store_add, ":party_no", multiplayer_campaign_player_parties_begin, ":player_no"),
+			(party_is_active, ":party_no"),
+			(party_leave_cur_battle, ":party_no"),
+			(party_detach, ":party_no"),
+			(disable_party, ":party_no"),
+		(try_end),
+
+		(assign, "$g_coop_server_cfg_applied", 0),
+		(assign, "$g_coop_debug_reveal", 0),
+		(assign, "$g_coop_world_save_pending", 0),
+	]),
+
 	("multiplayer_campaign_player_exit",
 	[
 		(store_script_param, ":player_no", 1),
@@ -9705,6 +9840,20 @@ coop_scripts = [
 
 		(try_for_players, ":current_player_no", 1),
 			(multiplayer_send_2_int_to_player, ":current_player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_player_exit, ":player_no"),
+		(try_end),
+
+		# Last player gone: save the world from the game loop (the pending
+		# trigger), not from inside the engine's disconnect callback. The
+		# exiting player is still active here, so it is not counted.
+		(assign, ":others", 0),
+		(try_for_players, ":other", 1),
+			(neq, ":other", ":player_no"),
+			(player_is_active, ":other"),
+			(val_add, ":others", 1),
+		(try_end),
+		(try_begin),
+			(eq, ":others", 0),
+			(assign, "$g_coop_world_save_pending", 1),
 		(try_end),
 	]),
 
@@ -10096,10 +10245,12 @@ coop_scripts = [
 	# Visit dialog, right before change_screen_trade: baseline for the
 	# in-scene trade (merchant snapshot, gold, merchant identity). No-op
 	# outside a visit -- the map path baselines from the server push.
-	# The acting character inside a local visit. Native's town dialogs read
-	# trp_player, which in coop is a different, empty character; outside a
-	# visit this still answers trp_player, so callers stay on one path.
-	("coop_visit_my_troop", [
+	# The acting character: the player agent's troop inside a local visit
+	# (the player APIs are not serviced at the visit's gameType), the
+	# player's own troop on a multiplayer client (the troop and party ranges
+	# share the player index), trp_player in singleplayer and on the server.
+	# Native code that read trp_player for "the player" reads this instead.
+	("coop_my_troop", [
 		(assign, reg0, "trp_player"),
 		(try_begin),
 			(eq, "$g_coop_in_local_visit", 1),
@@ -10109,16 +10260,20 @@ coop_scripts = [
 			(is_between, ":troop", multiplayer_campaign_player_troops_begin,
 				multiplayer_campaign_player_troops_end),
 			(assign, reg0, ":troop"),
+		(else_try),
+			(neq, "$g_coop_in_local_visit", 1),
+			(game_in_multiplayer_mode),
+			(neg|multiplayer_is_server),
+			(multiplayer_get_my_player, ":my_player"),
+			(ge, ":my_player", 0),
+			(store_add, reg0, multiplayer_campaign_player_troops_begin, ":my_player"),
 		(try_end),
 	]),
 
-	# The acting character's party. Derived from the troop rather than from
-	# player_get_party_id because the player APIs are not serviced at the
-	# gameType the ASI holds during a visit; the troop and party ranges share
-	# the player index.
-	("coop_visit_my_party", [
+	# The acting character's party, derived from coop_my_troop.
+	("coop_my_party", [
 		(assign, ":party", "p_main_party"),
-		(call_script, "script_coop_visit_my_troop"),
+		(call_script, "script_coop_my_troop"),
 		(try_begin),
 			(is_between, reg0, multiplayer_campaign_player_troops_begin,
 				multiplayer_campaign_player_troops_end),
@@ -10126,6 +10281,20 @@ coop_scripts = [
 			(store_add, ":party", multiplayer_campaign_player_parties_begin, ":idx"),
 		(try_end),
 		(assign, reg0, ":party"),
+	]),
+
+	# The troop that leads a party for wage purposes: a coop player party's
+	# own character, otherwise the acting character (native's trp_player).
+	# Input: party_no (0 = the acting character's party).
+	("coop_party_owner_troop", [
+		(store_script_param, ":party_no", 1),
+		(try_begin),
+			(is_between, ":party_no", multiplayer_campaign_player_parties_begin, multiplayer_campaign_player_parties_end),
+			(store_sub, ":idx", ":party_no", multiplayer_campaign_player_parties_begin),
+			(store_add, reg0, multiplayer_campaign_player_troops_begin, ":idx"),
+		(else_try),
+			(call_script, "script_coop_my_troop"),
+		(try_end),
 	]),
 
 	# Client: native's night-ambush trap on entering the streets, the tavern
@@ -11663,7 +11832,7 @@ coop_scripts = [
 			(troop_set_slot, "$g_talk_troop", slot_troop_last_persuasion_time, ":cur_hours"),
 			(assign, ":locked", coop_quest_convince_locked),
 		(try_end),
-		(call_script, "script_coop_visit_my_troop"),
+		(call_script, "script_coop_my_troop"),
 		(store_skill_level, ":persuasion_level", "skl_persuasion", reg0),
 		(store_add, ":persuasion_potential", ":persuasion_level", 5),
 		(store_random_in_range, ":random_1", 0, ":persuasion_potential"),
@@ -13062,6 +13231,235 @@ coop_scripts = [
 	]),
 
   # ==================================================================
+  # WAGES (wages_morale): native's weekly payroll per player party, on the
+  # campaign server; the client only displays it (ch125 ev 63).
+  # ==================================================================
+
+	# Per-player campaign-hour dispatcher (row A10): its arms run at most
+	# once per campaign hour for a hydrated player, whatever unit the
+	# simple-trigger clock uses, and are told how many campaign hours this
+	# connection has played since the previous run (0 on the first run after
+	# a connect: time away is never counted). Every arm wraps its conditions
+	# in a try_begin: a bare failing one would skip the arms after it.
+	("coop_player_hour_tick", [
+		(store_script_param, ":player_no", 1),
+		(player_slot_eq, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
+		(store_current_hours, ":stamp"),
+		(val_add, ":stamp", 1),
+		(player_get_slot, ":previous", ":player_no", slot_player_coop_tick_hour),
+		(neq, ":previous", ":stamp"),
+		(player_set_slot, ":player_no", slot_player_coop_tick_hour, ":stamp"),
+		(assign, ":played", 0),
+		(try_begin),
+			(gt, ":previous", 0),
+			(store_sub, ":played", ":stamp", ":previous"),
+		(try_end),
+		(call_script, "script_coop_wage_tick", ":player_no", 0, ":played"),
+	]),
+
+	# Wage of one party for one week: calculate_player_faction_wage for a
+	# single field party (no garrisons or enterprises yet).
+	# Input: party_no, half_days. Output: reg0.
+	("coop_party_weekly_wage", [
+		(store_script_param, ":party_no", 1),
+		(store_script_param, ":half_days", 2),
+		(assign, ":wages", 0),
+		(party_get_num_companion_stacks, ":num_stacks", ":party_no"),
+		(try_for_range, ":i_stack", 0, ":num_stacks"),
+			(party_stack_get_troop_id, ":stack_troop", ":party_no", ":i_stack"),
+			(party_stack_get_size, ":stack_size", ":party_no", ":i_stack"),
+			(call_script, "script_game_get_troop_wage", ":stack_troop", ":party_no"),
+			(val_mul, reg0, ":stack_size"),
+			(val_add, ":wages", reg0),
+		(try_end),
+		(store_sub, ":ratio", 14, ":half_days"),
+		(val_mul, ":wages", ":ratio"),
+		(val_div, ":wages", 14),
+		(assign, reg0, ":wages"),
+	]),
+
+	# Wages arm of coop_player_hour_tick, also run by coop_player_hydrate
+	# (report = 1 always sends the client its debt mirror; played = 0, so a
+	# rejoin never charges the time away). Native's 6 h half-pay check
+	# (module_simple_triggers.py:1015) runs hourly: a new day counts the
+	# previous one if its checkpoint survived and it directly precedes; an
+	# hour the party is not held in a walled center or a manor village
+	# clears the checkpoint. A payday falls every coop_wage_week_hours played
+	# hours; the first one due uses this week's half days.
+	("coop_wage_tick", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":report", 2),
+		(store_script_param, ":played", 3),
+		# Wrapped, not bare conditions: hydrate calls this for a character
+		# still in creation, and a depth-0 failure would abort the hydrate.
+		(try_begin),
+			(player_slot_eq, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
+			(call_script, "script_coop_quest_dict_load", ":player_no"),
+			(eq, reg0, 1),
+			(store_current_hours, ":now"),
+			(store_div, ":day", ":now", 24),
+			(val_add, ":day", 1),
+			(dict_get_int, ":stored_day", "$coop_quest_dict", "@char_wage_day", 0),
+			(dict_get_int, ":held", "$coop_quest_dict", "@char_wage_held", 0),
+			(dict_get_int, ":half_days", "$coop_quest_dict", "@char_wage_half_days", 0),
+			(dict_get_int, ":hours", "$coop_quest_dict", "@char_wage_hours", 0),
+			(dict_get_int, ":debt", "$coop_quest_dict", "@char_wage_debt", 0),
+			(assign, ":changed", 0),
+			(try_begin),
+				(neq, ":day", ":stored_day"),
+				(try_begin),
+					(eq, ":held", 1),
+					(store_add, ":following", ":stored_day", 1),
+					(eq, ":following", ":day"),
+					(val_add, ":half_days", 1),
+					(assign, ":report", 1),
+				(try_end),
+				(assign, ":stored_day", ":day"),
+				(assign, ":held", 1),
+				(assign, ":changed", 1),
+			(try_end),
+			(try_begin),
+				(eq, ":held", 1),
+				(player_get_slot, ":center", ":player_no", slot_player_coop_locked_center),
+				(assign, ":resting", 0),
+				(try_begin),
+					(gt, ":center", 0),
+					(this_or_next|party_slot_eq, ":center", slot_center_has_manor, 1),
+					(is_between, ":center", walled_centers_begin, walled_centers_end),
+					(assign, ":resting", 1),
+				(try_end),
+				(eq, ":resting", 0),
+				(assign, ":held", 0),
+				(assign, ":changed", 1),
+			(try_end),
+			(try_begin),
+				(gt, ":played", 0),
+				(val_add, ":hours", ":played"),
+				(assign, ":changed", 1),
+			(try_end),
+			(store_div, ":paydays", ":hours", coop_wage_week_hours),
+			(val_mod, ":hours", coop_wage_week_hours),
+			(dict_set_int, "$coop_quest_dict", "@char_wage_day", ":stored_day"),
+			(dict_set_int, "$coop_quest_dict", "@char_wage_held", ":held"),
+			(dict_set_int, "$coop_quest_dict", "@char_wage_half_days", ":half_days"),
+			(dict_set_int, "$coop_quest_dict", "@char_wage_hours", ":hours"),
+			(try_begin),
+				(gt, ":paydays", 0),
+				(player_get_party_id, ":party_no", ":player_no"),
+				(assign, ":wage", 0),
+				(try_for_range, ":week", 0, ":paydays"),
+					(assign, ":week_half_days", 0),
+					(try_begin),
+						(eq, ":week", 0),
+						(assign, ":week_half_days", ":half_days"),
+					(try_end),
+					(call_script, "script_coop_party_weekly_wage", ":party_no", ":week_half_days"),
+					(val_add, ":wage", reg0),
+				(try_end),
+				(call_script, "script_coop_wage_pay", ":player_no", ":wage", ":paydays"),
+			(else_try),
+				(eq, ":changed", 1),
+				(call_script, "script_coop_quest_dict_save", ":player_no"),
+			(else_try),
+				(dict_free, "$coop_quest_dict"),
+			(try_end),
+			(try_begin),
+				(eq, ":paydays", 0),
+				(eq, ":report", 1),
+				(call_script, "script_coop_wage_send_report", ":player_no", 0, 0, ":debt", ":half_days", 0),
+			(try_end),
+		(try_end),
+	]),
+
+	# Payday on the loaded wage dict ($coop_quest_dict, saved and freed
+	# here), in native's order (prsnt_budget_report): due = the wages plus
+	# the old debt, the gold pays what it covers, the rest is the new debt,
+	# the half-day count restarts. Input: player_no, wage (every payday
+	# due), paydays.
+	("coop_wage_pay", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":wage", 2),
+		(store_script_param, ":paydays", 3),
+		(dict_get_int, ":debt", "$coop_quest_dict", "@char_wage_debt", 0),
+		(store_add, ":due", ":wage", ":debt"),
+		(player_get_troop_id, ":troop_no", ":player_no"),
+		(store_troop_gold, ":gold", ":troop_no"),
+		(assign, ":paid", ":due"),
+		(val_min, ":paid", ":gold"),
+		(store_sub, ":new_debt", ":due", ":paid"),
+		(try_begin),
+			(gt, ":paid", 0),
+			(troop_remove_gold, ":troop_no", ":paid"),
+			(player_get_slot, ":dirty", ":player_no", slot_player_coop_char_dirty),
+			(val_or, ":dirty", coop_char_dirty_gold),
+			(player_set_slot, ":player_no", slot_player_coop_char_dirty, ":dirty"),
+		(try_end),
+		(dict_set_int, "$coop_quest_dict", "@char_wage_debt", ":new_debt"),
+		(dict_set_int, "$coop_quest_dict", "@char_wage_half_days", 0),
+		(call_script, "script_coop_quest_dict_save", ":player_no"),
+		# Nothing due (no paid troops, no debt): the advanced payday above is
+		# all there is to persist.
+		(try_begin),
+			(gt, ":due", 0),
+			(call_script, "script_coop_save_character", ":player_no"),
+			(call_script, "script_coop_send_char_sync_to_client", ":player_no"),
+			(str_store_player_username, s0, ":player_no"),
+			(assign, reg1, ":paydays"),
+			(assign, reg2, ":wage"),
+			(assign, reg3, ":paid"),
+			(assign, reg4, ":new_debt"),
+			(display_message, "@[WAGE] {s0}: {reg1} payday(s), wages {reg2}, paid {reg3}, debt {reg4}"),
+			(call_script, "script_coop_wage_send_report", ":player_no", ":wage", ":paid", ":new_debt", 0, 1),
+		(try_end),
+	]),
+
+	# ch125 ev 63 to one player. Input: player_no, wage, paid, debt,
+	# half_days, payday (0/1).
+	("coop_wage_send_report", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":wage", 2),
+		(store_script_param, ":paid", 3),
+		(store_script_param, ":debt", 4),
+		(store_script_param, ":half_days", 5),
+		(store_script_param, ":payday", 6),
+		(store_and, ":packed", ":wage", 0xFFFFFF),
+		(val_lshift, ":half_days", 24),
+		(val_or, ":packed", ":half_days"),
+		(val_lshift, ":payday", 28),
+		(val_or, ":packed", ":payday"),
+		(multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+			multiplayer_event_multiplayer_campaign_server_event_wage_report, ":packed", ":paid", ":debt"),
+	]),
+
+	# Client, ch125 ev 63: native's own wage globals (read by the budget and
+	# morale reports), plus the payday line.
+	("coop_wage_client_recv", [
+		(store_script_param, ":packed", 1),
+		(store_script_param, ":paid", 2),
+		(store_script_param, ":debt", 3),
+		(store_and, ":wage", ":packed", 0xFFFFFF),
+		(assign, ":half_days", ":packed"),
+		(val_rshift, ":half_days", 24),
+		(val_and, ":half_days", 0xF),
+		(assign, ":payday", ":packed"),
+		(val_rshift, ":payday", 28),
+		(assign, "$g_player_debt_to_party_members", ":debt"),
+		(assign, "$g_cur_week_half_daily_wage_payments", ":half_days"),
+		(try_begin),
+			(eq, ":payday", 1),
+			(assign, reg1, ":wage"),
+			(assign, reg2, ":paid"),
+			(assign, reg3, ":debt"),
+			(try_begin),
+				(eq, ":debt", 0),
+				(display_message, "@Payday: {reg1} denars in wages; you paid your men {reg2} denars."),
+			(else_try),
+				(display_message, "@Payday: {reg1} denars in wages; you could pay only {reg2} and owe your men {reg3} denars.", 0xFF0000),
+			(try_end),
+		(try_end),
+	]),
+
+  # ==================================================================
   # CAMPAIGN: NETWORK EVENT HANDLERS (extracted arms)
   # Rule: a dispatcher arm that exceeds ~10 lines or needs a comment
   # gets a named coop_ev_srv_* / coop_ev_cli_* script here; shorter
@@ -13283,10 +13681,14 @@ coop_scripts = [
 		(try_begin),
 			(gt, ":center_party", 0),
 			(party_is_active, ":center_party"),
+			(gt, ":player_party", 0),
+			(party_is_active, ":player_party"),
+			(store_distance_to_party_from_party, ":dist", ":player_party", ":center_party"),
+			(lt, ":dist", coop_tavern_transaction_range),
 			(call_script, "script_coop_battle_launch_on_free_slot", ":player_no", ":player_party", ":center_party", coop_battle_type_siege_player_attack),
 		(else_try),
 			(multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_battle_rejected, 0),
-			(display_message, "@{s0}: Siege target invalid."),
+			(display_message, "@{s0}: Siege target invalid or out of reach."),
 		(try_end),
 	]),
 
@@ -13317,6 +13719,11 @@ coop_scripts = [
             (try_begin),
                 (gt, ":center_party", 0),
                 (party_is_active, ":center_party"),
+                (player_get_party_id, ":requester_party", ":player_no"),
+                (gt, ":requester_party", 0),
+                (party_is_active, ":requester_party"),
+                (store_distance_to_party_from_party, ":dist", ":requester_party", ":center_party"),
+                (lt, ":dist", coop_tavern_transaction_range),
                 (party_get_slot, ":ptype", ":center_party", slot_party_type),
                 (this_or_next|eq, ":ptype", spt_town),
                 (eq, ":ptype", spt_castle),
@@ -13343,7 +13750,7 @@ coop_scripts = [
                 (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
                     multiplayer_event_multiplayer_campaign_server_event_start_siege_local, ":wall_scene", ":with_belfry"),
             (else_try),
-                (display_message, "@{s0}: Local siege target invalid."),
+                (display_message, "@{s0}: Local siege target invalid or out of reach."),
             (try_end),
         	]),
 
@@ -13839,11 +14246,39 @@ coop_scripts = [
 			multiplayer_event_multiplayer_campaign_server_event_visit_roster_done, ":hall_scene", ":tavern_scene", ":ambush"),
 	]),
 
+	# The faction a player's standing is measured against. Every player party
+	# belongs to the shared fac_player_faction until per-player factions
+	# exist; that feature changes only this body. Param 1 is the player.
+	("coop_player_faction", [
+		(assign, reg0, "fac_player_faction"),
+	]),
+
+	# ch125 ev 28 access bitfield for a player arriving at a center; reg0 = 0
+	# lets them in. Only towns and castles are gated: a faction hostile to the
+	# player's sets coop_center_access_forbidden (native mnu_castle_outside's
+	# entry_to_town_forbidden). Villages stay open, native raids them instead.
+	("coop_center_access", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":center_id", 2),
+		(assign, ":access", 0),
+		(try_begin),
+			(this_or_next|party_slot_eq, ":center_id", slot_party_type, spt_town),
+			(party_slot_eq, ":center_id", slot_party_type, spt_castle),
+			(call_script, "script_coop_player_faction", ":player_no"),
+			(store_faction_of_party, ":center_faction", ":center_id"),
+			(store_relation, ":relation", ":center_faction", reg0),
+			(lt, ":relation", 0),
+			(val_or, ":access", coop_center_access_forbidden),
+		(try_end),
+		(assign, reg0, ":access"),
+	]),
+
 	# Server-side arrival at a town/castle/village: the coop arm of
 	# game_event_party_encounter calls this for the player's party. Acquires
 	# the center lock, sends center_encounter (ev 27) with the scene id the
 	# client needs to launch its local visit, then the visitor roster; a
-	# center another player holds gets center_locked (ev 28) instead.
+	# center another player holds, or one hostile to the player's faction, gets
+	# center_locked (ev 28) with the access bitfield instead.
 	("coop_center_enter", [
 		# Server-authoritative: game_event_party_encounter runs on every
 		# campaign personality (gated only on multiplayer_is_campaign), so a
@@ -13886,6 +14321,19 @@ coop_scripts = [
 			(eq, ":lock_player", ":player_no"),
 			(assign, ":can_enter", 1),
 		(try_end),
+		# A hostile town or castle turns the player away before any lock: a
+		# player who still holds this center's lock (it turned hostile during
+		# the visit) is released, or the party would stay attached.
+		(call_script, "script_coop_center_access", ":player_no", ":center_id"),
+		(assign, ":access", reg0),
+		(try_begin),
+			(neq, ":access", 0),
+			(assign, ":can_enter", 0),
+			(try_begin),
+				(eq, ":lock_player", ":player_no"),
+				(call_script, "script_coop_center_lock_release", ":player_no"),
+			(try_end),
+		(try_end),
 		(assign, ":scene_id", 0),
 		(try_begin),
 			(eq, ":center_type", coop_center_type_town),
@@ -13910,7 +14358,7 @@ coop_scripts = [
 		(try_begin),
 			(eq, ":can_enter", 0),
 			(multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-				multiplayer_event_multiplayer_campaign_server_event_center_locked, ":center_id", 0),
+				multiplayer_event_multiplayer_campaign_server_event_center_locked, ":center_id", ":access"),
 		(try_end),
 	]),
 
@@ -14053,14 +14501,27 @@ coop_scripts = [
                 (display_message, "@[COOP] {s0}: trade_done REJECTED, no merchant (gold {reg1} not applied)"),
             (else_try),
                 (player_get_troop_id, ":troop_no", ":player_no"),
+                # The merchant pays for what the player sold, never more than
+                # the gold it has, and takes what the player paid.
+                (store_troop_gold, ":merchant_gold", ":merchant_troop"),
+                (try_begin),
+                    (gt, ":gold_delta", ":merchant_gold"),
+                    (str_store_player_username, s0, ":player_no"),
+                    (assign, reg1, ":gold_delta"),
+                    (assign, reg2, ":merchant_gold"),
+                    (display_message, "@[COOP] {s0}: trade_done capped, sale {reg1} > merchant gold {reg2}"),
+                    (assign, ":gold_delta", ":merchant_gold"),
+                (try_end),
                 # Apply gold delta (can be negative = player bought, positive = player sold)
                 (try_begin),
                     (gt, ":gold_delta", 0),
                     (troop_add_gold, ":troop_no", ":gold_delta"),
+                    (troop_remove_gold, ":merchant_troop", ":gold_delta"),
                 (else_try),
                     (lt, ":gold_delta", 0),
                     (store_mul, ":abs_delta", ":gold_delta", -1),
                     (troop_remove_gold, ":troop_no", ":abs_delta"),
+                    (troop_add_gold, ":merchant_troop", ":abs_delta"),
                 (try_end),
                 # Belt-and-braces: ev 32 below already pushes gold for this
                 # window's baseline, but the next screen-close should still see
@@ -14625,7 +15086,9 @@ coop_scripts = [
         (else_try),
             (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_center_locked),  # 28
             (store_script_param, ":center_party", 2),
+            (store_script_param, ":access", 3),
             (assign, "$g_coop_center_party", ":center_party"),
+            (assign, "$g_coop_center_access", ":access"),
             (assign, "$g_coop_encounter_done", 0),
             (call_script, "script_coop_client_request_menu", "mnu_coop_center_locked"),
         (else_try),
@@ -14709,6 +15172,12 @@ coop_scripts = [
             (store_script_param, ":p3", 3),
             (store_script_param, ":p4", 4),
             (call_script, "script_coop_quest_client_recv_lords", ":p2", ":p3", ":p4"),
+        (else_try),
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_wage_report),  # 63
+            (store_script_param, ":p2", 2),
+            (store_script_param, ":p3", 3),
+            (store_script_param, ":p4", 4),
+            (call_script, "script_coop_wage_client_recv", ":p2", ":p3", ":p4"),
 		(try_end),
     ]),
 
@@ -14969,6 +15438,10 @@ coop_scripts = [
             (store_script_param, ":y", 4),
             (call_script, "script_coop_ev_cli_debug_teleport", ":player_no", ":x", ":y"),
         (else_try),
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_debug_declare_war),  # 40
+            (store_script_param, ":faction", 3),
+            (call_script, "script_coop_ev_cli_debug_declare_war", ":player_no", ":faction"),
+        (else_try),
             (eq, ":event_type", multiplayer_event_multiplayer_campaign_quest_claim),  # 30
             (store_script_param, ":quest_no", 3),
             (store_script_param, ":choice", 4),
@@ -14979,6 +15452,28 @@ coop_scripts = [
   # ==================================================================
   # CAMPAIGN: BATTLE PIPELINE (write data, apply results, XP)
   # ==================================================================
+
+	# Succeeds when the party or any party attached under it is a player
+	# party. The engine's simulated map battles pool the whole attachment
+	# tree (inflict_casualties_to_party_group), and a player inside a
+	# center is attached to it, so a root-only test misses them.
+	("cf_coop_party_group_has_player", [
+		(store_script_param, ":party", 1),
+		(assign, ":found", 0),
+		(try_begin),
+			(neg|party_is_non_player, ":party"),
+			(assign, ":found", 1),
+		(else_try),
+			(party_get_num_attached_parties, ":num_attached", ":party"),
+			(try_for_range, ":rank", 0, ":num_attached"),
+				(eq, ":found", 0),
+				(party_get_attached_party_with_rank, ":attached", ":party", ":rank"),
+				(call_script, "script_cf_coop_party_group_has_player", ":attached"),
+				(assign, ":found", 1),
+			(try_end),
+		(try_end),
+		(eq, ":found", 1),
+	]),
 
 	# ==================================================================
 	# BATTLE SERVER POOL: per-slot state helpers
@@ -16344,8 +16839,9 @@ coop_scripts = [
         (store_script_param, ":player_no", 1),
         (store_script_param, ":merchant_troop", 2),
         (gt, ":merchant_troop", 0),
+        (store_troop_gold, ":merchant_gold", ":merchant_troop"),
         (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-            multiplayer_event_multiplayer_campaign_server_event_visit_merchant_slot, ":merchant_troop", -1, 0),
+            multiplayer_event_multiplayer_campaign_server_event_visit_merchant_slot, ":merchant_troop", -1, ":merchant_gold"),
         (try_for_range, ":slot", 0, 96),
             (troop_get_inventory_slot, ":item", ":merchant_troop", ":slot"),
             (ge, ":item", 0),
@@ -16446,9 +16942,10 @@ coop_scripts = [
                     multiplayer_event_multiplayer_campaign_server_event_trade_merchant_slot, ":slot", ":item", ":imod"),
             (try_end),
 
-            # Signal sync done -> client opens trade screen
+            # Signal sync done with the merchant's gold -> client opens trade screen
+            (store_troop_gold, ":merchant_gold", ":merchant_troop"),
             (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
-                multiplayer_event_multiplayer_campaign_server_event_trade_sync_done, 0),
+                multiplayer_event_multiplayer_campaign_server_event_trade_sync_done, ":merchant_gold"),
         (try_end),
     ]),
 
@@ -16778,6 +17275,22 @@ coop_scripts = [
        (else_try),
          (display_message, "@[DEBUG] {s0}: teleport to {reg40},{reg41} REJECTED (not on the open map)"),
        (try_end),
+     (try_end),
+   ]),
+
+  # ch49 ev 40, debug launcher only: the kingdom declares war on the players.
+  # Every player party is in fac_player_faction, so the war is shared.
+  ("coop_ev_cli_debug_declare_war",
+   [
+     (store_script_param, ":player_no", 1),
+     (store_script_param, ":faction", 2),
+     (try_begin),
+       (eq, "$g_coop_debug_reveal", 1),
+       (is_between, ":faction", kingdoms_begin, kingdoms_end),
+       (call_script, "script_set_player_relation_with_faction", ":faction", -40),
+       (str_store_player_username, s0, ":player_no"),
+       (str_store_faction_name, s1, ":faction"),
+       (display_message, "@[DEBUG] {s0}: {s1} declares war on the players"),
      (try_end),
    ]),
 ]

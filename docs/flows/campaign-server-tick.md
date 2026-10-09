@@ -5,8 +5,8 @@
 read 1 live 2026-09-24), D2/D4 implemented (build/config, not
 runtime-tested), D3 apply-verified (drain effect unmeasured)
 **Validated against commit:** `6a72f6b` (RE 2026-09-20 against the deployed
-1145 exes with their PDBs; the `patches/WSE2Dedicated` Ghidra project is
-stale -- see Open questions)
+1145 exes with their PDBs; the campaign exe's RE project is
+`patches/WarbandDedicated`); row 6 runtime-verified at `d6ec076`, 2026-10-03
 
 ## Scope
 
@@ -120,7 +120,7 @@ sequenceDiagram
 | 3 | Party positions reach clients via replication | Engine native | `updateReplicationData` 0x49D4F0 diffs 4 rows per party by exact inequality every frame; `sendPartyReplicationData` 0x49B920 round-robin per client, cut at 0x2A2F bits; `getPartyReplicationPriority` 0x4A7630 is 1/0 on disabled (0x100), static (0x400), dont-send (0x8000). No visibility or distance cull exists | OK |
 | 4 | Send pacing while a client has a backlog | Stock: `max(m_packetSendPeriod, min(0.1f, ping_ms / 0.001f * 0.7f))` -- `divss` where a `mulss` was meant (0x499D91), so the min saturates for any ping >= 1 ms and the client is pinned to 10 Hz exactly when it is behind | Fixed in `226e956`: `BacklogPeriodMs` re-points the disp32 of the single ceiling load (0x499D8D campaign / 0x4C56AD battle) at `g_backlog_period_s`; default 33 ms collapses the arm to `m_packetSendPeriod`. The 0.1f dword has 39 readers (campaign) / 103 (battle, incl. `mbCoreGame::frameMove`'s dt clamp) so it is not rewritten. Verified applying on both exes 2026-09-20 (host log `backlog_ceiling: 0x00DE7BEC -> ...`, battle log `0x0073B870 -> ...`); drain-time effect not yet measured with a client | OK (D3, implemented, apply-verified, effect unverified) |
 | 5 | Main loop at 240 fps | `server_config.ini` 240 -> 100 (`197f230`) | Sends cap at 30 Hz per client (`computePacketValues` floor 0x887BC0); every frame still walks all parties (anchor 8) and runs per-party `frameMove`; campaign time integrates from dt so the cap is CPU only | OK (D4, config, not runtime-tested) |
-| 6 | Simple-trigger interval unit on this personality | Module comments assume seconds (autosave `(300, ...)` "5 min") | `mbSimpleTrigger::execute` 0x4E5FF0 compares against timer 1 = the campaign date clock (same accumulator `mbGame::frameMove` divides by 100000 for `m_hour`), advanced at 0.25 h per real second -> 1 game hour = 4 s, so 300 = 20 min, 6 = 24 s, 24 = 96 s. A first-pass reading called it seconds; the deeper trace says hours | UNKNOWN (needs one live count) |
+| 6 | Simple-trigger interval unit on this personality | Module comments assume seconds (autosave `(300, ...)` "5 min") | `mbSimpleTrigger::execute` 0x4E5FF0 compares against timer 1 = the campaign date clock (same accumulator `mbGame::frameMove` divides by 100000 for `m_hour`), advanced at 0.25 h per real second -> 1 game hour = 4 s, so 300 = 20 min, 6 = 24 s, 24 = 96 s. A first-pass reading called it seconds; the deeper trace says hours | OK -- campaign hours, runtime-verified 2026-10-03 (wages_morale gate step 0: the `(1, ...)` trigger fired exactly once per campaign hour, `[TICK] hour H, fires 1` for hours 398-421). Module comments that assume seconds (autosave `(300, ...)` "5 minutes") are wrong: 300 = 20 real min with a player online |
 | 7 | `stop_time` pauses the campaign server clock | Console `campaign_pause` uses opcode 3608 | `mbGame::m_paused` (+0x39C) has one writer, the ctor (= 0); 3608 is a mission-pause op. The clock never stops on this personality | DIVERGES (documented, no fix requested) |
 | 8 | Plugin per-frame work | `coop_on_frame` heartbeat + one global read | Negligible; IPC on its own thread | OK |
 
@@ -142,18 +142,17 @@ sequenceDiagram
   `+0x300` advances at `m_packetSendPeriod`, not 0.1 s.
 - D2/D4 have only been built/configured, not observed with players; the
   deployed game-dir `server_config.ini` must be copied over by hand (D4).
-- `patches/WSE2Dedicated` (Ghidra project + index.db) was built from the
-  Nov-2025 exe under `wse2work/WSE2 Coop Server/`, not the deployed 1145
-  build; offsets differ non-uniformly (+0x10..+0x3920). Every address in
-  this dossier was re-derived on the deployed file. Re-analyze before the
-  next RE pass.
+- The campaign exe's RE project is `patches/WarbandDedicated`, built from
+  the deployed 1145 exe with its PDB; its index.db carries functions and
+  data labels (export 2026-10-03), so the addresses in this dossier can be
+  checked with `python -m retools.query WarbandDedicated`.
 
 ## Related docs
 
 - `steam-tunnel.md` (nettune's other knobs, `PacketMaxSize` rationale)
 - `party-screen-sync.md` (roster reaches clients via the join spawn burst)
-- Workbench documents: `patches/WSE2Dedicated/findings_campaign_periodic_load.md`
-  (this analysis), `patches/WarbandDedicated/findings.md` ("nettune patch
-  sites", Q1-Q7 send-path anatomy), `patches/WarbandDedicated/network_tick_rate.md`,
+- Workbench documents: `patches/WarbandDedicated/findings.md` ("Campaign
+  server periodic load", this analysis; "nettune patch sites", Q1-Q7
+  send-path anatomy), `patches/WarbandDedicated/network_tick_rate.md`,
   `docs/wse2-binary-patches.md` ("Backlog Send-Period Ceiling"),
   `docs/DEFERRED.md` ("Campaign server periodic load").

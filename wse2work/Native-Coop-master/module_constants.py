@@ -2045,6 +2045,11 @@ slot_party_coop_quest_owner = 602   # party slots are one namespace; 601 = slot_
 # Bit (quest_no - mayor_quests_begin) set while that quest is active,
 # failed-awaiting-claim or succeeded-awaiting-claim; rebuilt at hydrate.
 slot_player_coop_quest_mask = 68
+# Campaign hour + 1 the per-player hour dispatcher (coop_player_hour_tick)
+# last ran; zero per connect, so the first tick after a connect runs.
+slot_player_coop_tick_hour = 69
+# Native pay day: every 24 * 7 campaign hours (module_simple_triggers.py:717).
+coop_wage_week_hours = 168
 # Client-side quest slot: the server's looter kill count (ev 58). Native
 # reads an engine per-player counter instead, which coop cannot use.
 slot_quest_coop_count = 30          # native slot_quest_* end at 27
@@ -2121,6 +2126,11 @@ coop_tavern_role_companion  = 8
 # the player's party onto the center it just left. Anything further away
 # than this is not a player who walked out of that tavern.
 coop_tavern_transaction_range = 3
+
+# ch125 ev 28 center_locked: second int is the access bitfield; 0 = another
+# player holds the center. Later bits belong to castle_visits, sneaking and
+# prison (one bitfield, no second event).
+coop_center_access_forbidden = 1
 
 # The server clock keeps running through a visit, so trigger 72 can re-roll
 # a tavern between what the player agreed to and the replay. The re-roll

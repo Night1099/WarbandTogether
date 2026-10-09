@@ -15,8 +15,13 @@ if %SLOTS% GTR 4 set SLOTS=4
 if %SLOTS% LSS 1 set SLOTS=1
 set /a LAST=%SLOTS%-1
 
+rem The campaign server continues the world in slot COOP_SAVE_NO under
+rem Documents\Mount&Blade Warband WSE2\NativeCoop\Savegames: slot 0 is
+rem sg00.sav; the debug launcher uses slot 1 (sg01.sav). Delete that file
+rem to start a new world. A missing file starts a new world.
+if "%COOP_SAVE_NO%"=="" set COOP_SAVE_NO=0
 echo Starting campaign server + %SLOTS% battle server(s)...
-start "Coop Campaign Server" "mb_warband_wse2_dedicated_campaign.exe" --config-path server_config.ini -r Configs\CampaignCoop.txt --module NativeCoop
+start "Coop Campaign Server" "mb_warband_wse2_dedicated_campaign.exe" --config-path server_config.ini -r Configs\CampaignCoop.txt --module NativeCoop --load-game --save-no %COOP_SAVE_NO%
 timeout /t 3 >nul
 
 for /l %%s in (0,1,%LAST%) do (

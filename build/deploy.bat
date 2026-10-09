@@ -49,11 +49,6 @@ if %DEPLOY_WARN%==0 (
 ) else (
     echo === Deploy finished with %DEPLOY_WARN% warning^(s^) -- close game/servers and rerun build\deploy.bat ===
 )
-
-rem Package a shareable client zip from the freshly deployed artifacts.
-rem A packaging failure never fails the deploy itself.
-call "%~dp0package_mod.bat"
-if errorlevel 1 echo WARN: package_mod.bat failed -- deploy itself is complete
 exit /b 0
 
 :warn

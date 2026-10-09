@@ -363,18 +363,18 @@
     {
       "group": "Stability",
       "id": "dedicated_ghidra_project_stale",
-      "milestone": "full_parity",
+      "milestone": "adventurer",
       "name": "Developer analysis tools kept current",
       "note": "Internal tooling fix, no player-visible effect.",
-      "status": "Known issue"
+      "status": "Works"
     },
     {
       "group": "Stability",
       "id": "dev_tooling",
-      "milestone": "full_parity",
+      "milestone": "adventurer",
       "name": "Developer build and test tools",
       "note": "Internal developer tooling, no effect on play.",
-      "status": "Known issue"
+      "status": "Works"
     },
     {
       "group": "Politics & kingdoms",
@@ -405,8 +405,8 @@
       "id": "enemy_center_access",
       "milestone": "adventurer",
       "name": "Enemy towns and castles turn players away",
-      "note": "Enemy towns and castles do not turn players away yet.",
-      "status": "Known issue"
+      "note": "Enemy towns and castles turn players away.",
+      "status": "Works"
     },
     {
       "group": "Combat",
@@ -1027,10 +1027,10 @@
     {
       "group": "Meta",
       "id": "save_load",
-      "milestone": "full_parity",
+      "milestone": "adventurer",
       "name": "Saving and loading",
-      "note": "The shared world is only saved when the host saves it from the server console; characters save on their own.",
-      "status": "Partly works"
+      "note": "The campaign server saves the shared world every 20 minutes of play and when the last player leaves, and continues it on the next start.",
+      "status": "Works"
     },
     {
       "group": "Travel & world map",
@@ -1095,6 +1095,14 @@
       "name": "Assaulting a castle or town",
       "note": "",
       "status": "Works"
+    },
+    {
+      "group": "Stability",
+      "id": "simulated_battle_player_leak",
+      "milestone": "adventurer",
+      "name": "Players inside a besieged center keep their troops",
+      "note": "A player waiting inside a town or castle that comes under AI assault can lose troops without being asked.",
+      "status": "Known issue"
     },
     {
       "group": "Towns",
@@ -1349,8 +1357,8 @@
       "id": "wages_morale",
       "milestone": "adventurer",
       "name": "Weekly wages",
-      "note": "Troops do not cost weekly wages yet.",
-      "status": "Planned"
+      "note": "Your troops cost weekly wages, paid from your gold; unpaid wages become debt.",
+      "status": "Works"
     },
     {
       "group": "Reports & screens",
@@ -1379,11 +1387,11 @@
   ],
   "milestones": [
     {
-      "done": 23,
+      "done": 28,
       "id": "adventurer",
       "name": "Adventurer",
       "summary": "Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, use taverns, the arena and tournaments, hire companions, do village work and early quests.",
-      "total": 113
+      "total": 117
     },
     {
       "done": 1,
@@ -1411,7 +1419,7 @@
       "id": "full_parity",
       "name": "Full parity",
       "summary": "Everything left, including meta and reports.",
-      "total": 30
+      "total": 27
     }
   ],
   "schema_version": 1
