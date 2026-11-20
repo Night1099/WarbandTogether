@@ -72,7 +72,7 @@ simple_triggers = [
         (position_set_y, pos1, "$g_coop_camera_cache_y"),
         (party_set_position, ":my_party", pos1),
       (try_end),
-      (set_camera_follow_party, ":my_party", 1),
+      (call_script, "script_coop_client_camera_follow"),
     (try_end),
    ]),
 
@@ -184,6 +184,7 @@ simple_triggers = [
   (0,
    [
     (eq, "$g_coop_battle_available", 1),
+    (eq, "$g_coop_captive", 0),
     (key_clicked, key_b),
     (jump_to_menu, "mnu_coop_join_battle"),
    ]),
@@ -214,6 +215,21 @@ simple_triggers = [
     (key_clicked, key_v),
     (multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
         multiplayer_event_multiplayer_campaign_debug_declare_war, "fac_kingdom_2"),
+   ]),
+
+  # Payday budget report (native pay day, :700): ch125 ev 63 flags the
+  # payday, the report opens from the game loop. Display only -- the
+  # campaign server already paid, so the report must not apply it again.
+  (0,
+   [
+    (eq, "$g_coop_budget_report_pending", 1),
+    (neg|is_presentation_active, "prsnt_budget_report"),
+    (assign, "$g_coop_budget_report_pending", 0),
+    (assign, "$g_presentation_lines_to_display_begin", 0),
+    (assign, "$g_presentation_lines_to_display_end", 15),
+    (assign, "$g_apply_budget_report_to_gold", 0),
+    (assign, "$g_coop_budget_report_payday", 1),
+    (start_presentation, "prsnt_budget_report"),
    ]),
 
   # Deferred battle-server connect: multiplayer_connect_to_server must run
@@ -257,6 +273,20 @@ simple_triggers = [
     (eq, "$g_coop_server_cfg_applied", 0),
     (multiplayer_is_dedicated_server),
     (call_script, "script_coop_apply_server_cfg"),
+   ]),
+
+  (0.5,
+   [
+    (multiplayer_is_server),
+    (call_script, "script_coop_captivity_follow_captors"),
+   ]),
+
+  # A battle nobody reached is released (coop_battle_unjoined_check).
+  (1,
+   [
+    (multiplayer_is_server),
+    (multiplayer_is_campaign),
+    (call_script, "script_coop_battle_unjoined_check"),
    ]),
 
   # Debug reveal: the campaign server marks every party map-visible when
@@ -305,14 +335,6 @@ simple_triggers = [
       (assign, ":wl", "$g_coop_pending_win_loss"),
       (assign, ":xp", "$g_coop_pending_xp"),
       (assign, ":cas_count", "$g_coop_pending_cas_count"),
-      # Send main result
-      (multiplayer_send_4_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
-          multiplayer_event_multiplayer_campaign_local_fight_result,
-          ":wl", ":cas_count", ":xp"),
-      (assign, reg1, ":wl"),
-      (assign, reg2, ":xp"),
-      (assign, reg3, ":cas_count"),
-      (display_message, "@Sent local battle result: win={reg1} xp={reg2} cas={reg3}"),
       # Send per-stack casualties (from globals -- troop slots don't survive server join)
       (try_begin), (ge, ":cas_count", 1),
           (multiplayer_send_4_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
@@ -364,6 +386,14 @@ simple_triggers = [
               multiplayer_event_multiplayer_campaign_local_fight_result,
               -2, "$g_coop_pending_cas_tid_9", "$g_coop_pending_cas_killed_9"),
       (try_end),
+      # Main result last: the server decides defeat on it, after the casualties above.
+      (multiplayer_send_4_int_to_server, multiplayer_event_multiplayer_campaign_client_events,
+          multiplayer_event_multiplayer_campaign_local_fight_result,
+          ":wl", ":cas_count", ":xp"),
+      (assign, reg1, ":wl"),
+      (assign, reg2, ":xp"),
+      (assign, reg3, ":cas_count"),
+      (display_message, "@Sent local battle result: win={reg1} xp={reg2} cas={reg3}"),
     (try_end),
    ]),
 
@@ -782,7 +812,7 @@ simple_triggers = [
    [
       (neg|game_in_multiplayer_mode),
 	  
-      (call_script, "script_get_player_party_morale_values"),
+      (call_script, "script_get_player_party_morale_values", "p_main_party", "trp_player", "$g_player_debt_to_party_members"),
       (assign, ":target_morale", reg0),
       (party_get_morale, ":cur_morale", "p_main_party"),
       (store_sub, ":dif", ":target_morale", ":cur_morale"),
@@ -2769,22 +2799,10 @@ simple_triggers = [
     (neg|game_in_multiplayer_mode),
    
     (eq, "$g_player_is_captive", 0),
-    (party_get_num_companion_stacks, ":num_stacks","p_main_party"),
-    (assign, ":num_men", 0),
-    (try_for_range, ":i_stack", 0, ":num_stacks"),
-      (party_stack_get_size, ":stack_size","p_main_party",":i_stack"),
-      (val_add, ":num_men", ":stack_size"),
-    (try_end),
-    (val_div, ":num_men", 3),
-    (try_begin),
-      (eq, ":num_men", 0),
-      (val_add, ":num_men", 1),
-    (try_end),
-    
     (try_begin),
       (assign, ":number_of_foods_player_has", 0),
       (try_for_range, ":cur_edible", food_begin, food_end),      
-        (call_script, "script_cf_player_has_item_without_modifier", ":cur_edible", imod_rotten),
+        (call_script, "script_cf_player_has_item_without_modifier", ":cur_edible", imod_rotten, "trp_player"),
         (val_add, ":number_of_foods_player_has", 1),
       (try_end),
       (try_begin),
@@ -2793,32 +2811,18 @@ simple_triggers = [
       (try_end),
     (try_end),
     
-    (assign, ":consumption_amount", ":num_men"),
-    (assign, ":no_food_displayed", 0),
-    (try_for_range, ":unused", 0, ":consumption_amount"),
-      (assign, ":available_food", 0),
-      (try_for_range, ":cur_food", food_begin, food_end),
-        (item_set_slot, ":cur_food", slot_item_is_checked, 0),
-        (call_script, "script_cf_player_has_item_without_modifier", ":cur_food", imod_rotten),
-        (val_add, ":available_food", 1),
-      (try_end),
-      (try_begin),
-        (gt, ":available_food", 0),
-        (store_random_in_range, ":selected_food", 0, ":available_food"),
-        (call_script, "script_consume_food", ":selected_food"),
-      (else_try),
-        (eq, ":no_food_displayed", 0),
-        (display_message, "@Party has nothing to eat!", 0xFF0000),
-        (call_script, "script_change_player_party_morale", -3),
-        (assign, ":no_food_displayed", 1),
+    (call_script, "script_party_consume_food", "p_main_party", "trp_player"),
+    (try_begin),
+      (eq, reg0, 1),
+      (display_message, "@Party has nothing to eat!", 0xFF0000),
+      (call_script, "script_change_player_party_morale", -3),
 #NPC companion changes begin
-        (try_begin),
-            (call_script, "script_party_count_fit_regulars", "p_main_party"),
-            (gt, reg0, 0),
-            (call_script, "script_objectionable_action", tmt_egalitarian, "str_men_hungry"),
-        (try_end),
-#NPC companion changes end
+      (try_begin),
+        (call_script, "script_party_count_fit_regulars", "p_main_party"),
+        (gt, reg0, 0),
+        (call_script, "script_objectionable_action", tmt_egalitarian, "str_men_hungry"),
       (try_end),
+#NPC companion changes end
     (try_end),
     ]),
 
@@ -2826,25 +2830,7 @@ simple_triggers = [
   (24,
    [
      (neg|game_in_multiplayer_mode),
-	
-     (troop_get_inventory_capacity, ":inv_size", "trp_player"),
-     (try_for_range, ":i_slot", 0, ":inv_size"),
-       (troop_get_inventory_slot, ":item_id", "trp_player", ":i_slot"),
-       (this_or_next|eq, ":item_id", "itm_cattle_meat"),
-       (this_or_next|eq, ":item_id", "itm_chicken"),
-		(eq, ":item_id", "itm_pork"),
-		
-       (troop_get_inventory_slot_modifier, ":modifier", "trp_player", ":i_slot"),
-       (try_begin),
-         (ge, ":modifier", imod_fresh),
-         (lt, ":modifier", imod_rotten),
-         (val_add, ":modifier", 1),
-         (troop_set_inventory_slot_modifier, "trp_player", ":i_slot", ":modifier"),
-       (else_try),
-         (lt, ":modifier", imod_fresh),
-         (troop_set_inventory_slot_modifier, "trp_player", ":i_slot", imod_fresh),
-       (try_end),
-     (try_end),
+     (call_script, "script_troop_age_food", "trp_player"),
     ]),
 
   # Assigning lords to centers with no leaders
@@ -4864,6 +4850,20 @@ simple_triggers = [
           (player_is_active, ":player_no"),
           (call_script, "script_coop_player_hour_tick", ":player_no"),
       (try_end),
+   ]),
+
+  # Client: a captive's own party copy rides on the captor (camera and fog
+  # of war follow the own party). The pre-hydrate pin owns it until landed.
+  (0,
+   [
+    (try_begin),
+      (neg|multiplayer_is_server),
+      (multiplayer_is_campaign),
+      (eq, "$g_coop_captive", 1),
+      (eq, "$g_coop_camera_landed", 1),
+      (party_is_active, "$g_coop_captor_party"),
+      (call_script, "script_coop_captivity_client_follow_captor"),
+    (try_end),
    ]),
 
 ]

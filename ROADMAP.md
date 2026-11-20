@@ -4,11 +4,11 @@ How far coop is from Warband's single-player campaign, feature by feature, follo
 
 | Milestone | Done |
 |---|---|
-| Adventurer | 28 / 117 |
+| Adventurer | 35 / 124 |
 | Mercenary & vassal | 1 / 18 |
 | Lord | 0 / 8 |
 | Sovereign | 0 / 2 |
-| Full parity | 10 / 27 |
+| Full parity | 10 / 29 |
 
 ## Adventurer
 
@@ -16,15 +16,16 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 
 | Feature | Area | Status | Note |
 |---|---|---|---|
-| Character creation | Character & party | Partly works | Character creation applies your background's stats, but not its starting gold, renown or honor, and you cannot pick a starting town yet. |
-| Starting gold, troops and gear | Character & party | Known issue | New characters start with a large test army and extra gold, and their background's starting equipment is replaced by a default kit. |
+| Character creation | Character & party | Partly works | Character creation applies your background's stats and gold, but not its renown or honor, and you cannot pick a starting town yet. |
+| Starting gold, troops and gear | Character & party | Works |  |
 | Levels, attributes and skills | Character & party | Works |  |
 | Companion equipment and skill points | Character & party | Known issue | Items you hand to a companion can be lost; don't give companions equipment yet. |
 | Inventory and equipment | Character & party | Works |  |
+| Item modifiers trusted from the client | Character & party | Known issue | Closing the inventory right as food spoils can undo the spoiling. |
 | Party and troop upgrades | Character & party | Partly works | Recruiting and upgrading work, but party size is not limited by leadership yet. |
 | Weekly wages | Character & party | Works | Your troops cost weekly wages, paid from your gold; unpaid wages become debt. |
-| Party morale | Character & party | Planned | Party morale does not change yet. |
-| Food and supplies | Character & party | Planned | Your party does not eat food yet, and food never spoils. |
+| Party morale | Character & party | Works |  |
+| Food and supplies | Character & party | Works | Your party eats food and meat spoils, counted over the time you are online. |
 | Taking and keeping prisoners | Character & party | Works |  |
 | Selling prisoners to ransom brokers | Character & party | Planned | Prisoners cannot be sold to ransom brokers yet. |
 | Recruiting prisoners | Character & party | Planned | You cannot recruit your prisoners yet. |
@@ -47,9 +48,13 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Field battles | Combat | Works |  |
 | Joining a battle already under way | Combat | Planned | You cannot join a battle that two other armies are already fighting. |
 | Sending your troops in without you | Combat | Planned | You cannot order your troops to fight a battle without you. |
+| Troops fleeing a lost battle | Combat | Planned | Troops on a battle server never flee, however badly the battle goes. |
+| Enemy party held during a player's battle | Combat | Known issue | While you fight a party, it keeps moving on the world map until the battle ends. |
 | Battle loot | Combat | Planned | Winning a battle gives no item loot yet. |
 | Capturing or releasing a beaten lord | Combat | Partly works | Beaten lords are captured or escape automatically; you cannot choose to let them go. |
-| Defeat, captivity and escape | Combat | Planned | Losing a battle never makes you a prisoner; you escape at once. |
+| Defeat, captivity and escape | Combat | Partly works | Losing a battle can make you a prisoner: the camera follows your captor until you escape, are ransomed or rescued by another player. |
+| A captive's camera follows the captor smoothly | Combat | Works | While you are a prisoner, the map camera follows your captor. |
+| A captive player shows in the captor's party as a prisoner | Combat | Planned | Captured players will show up as prisoners when you look at the party holding them. |
 | Town menu and streets | Towns | Works |  |
 | Marketplace and merchants | Towns | Works |  |
 | Assessing local prices | Towns | Planned | You cannot yet assess a town's prices from the marketplace. |
@@ -98,7 +103,7 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Companions | Lords, ladies & companions | In testing |  |
 | Talking to companions in your party | Lords, ladies & companions | Not yet assessed |  |
 | Companion complaints and departures | Lords, ladies & companions | Planned | Companions never complain, quarrel or leave the party. |
-| Starting companion shared between players | Lords, ladies & companions | Known issue | Two players can end up with the same starting companion. |
+| Starting companion shared between players | Lords, ladies & companions | Works |  |
 | Saving and loading | Meta | Works | The campaign server saves the shared world every 20 minutes of play and when the last player leaves, and continues it on the next start. |
 | Battle servers and the battle chooser | Coop features | In testing |  |
 | In-battle menus (Esc menu, game rules, troop choice, admin panel) | Coop features | In testing |  |
@@ -121,10 +126,12 @@ Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, 
 | Recovering the Steam tunnel | Coop features | Partly works | When the host is offline or Steam restarts, the connection gives up or recovers without telling the player what happened. |
 | Hosting and the server password | Coop features | Partly works | On a passworded server, players must also put the password in their own coop.ini or they cannot join battles. |
 | Debug launcher (map reveal, teleport) | Coop features | Works |  |
+| LAN joiners reach the battle server | Coop features | Known issue | On a LAN, joining players must set the host's address as HostIP in coop.ini or battles will not start for them. |
+| A battle nobody reaches is called off | Coop features | Works | If nobody manages to join a battle, it is called off after about a minute and the enemy party moves on. |
 | Server performance | Stability | In testing |  |
 | Network tuning (bandwidth floor, packet size) | Stability | Works |  |
 | Catch-up speed for a lagging player | Stability | In testing |  |
-| Timed server jobs run on schedule (autosave, quest tick) | Stability | Not yet assessed |  |
+| Timed server jobs run on schedule (autosave, quest tick) | Stability | Works |  |
 | Connection stability | Stability | Works |  |
 | Map parties a player missed on join reappear | Stability | Not yet assessed |  |
 | Battle names pushed to players (faction, troop classes, heroes) | Stability | Not yet assessed |  |
@@ -191,6 +198,7 @@ Everything left, including meta and reports.
 |---|---|---|---|
 | Party icon on the map (rider, camp) | Travel & world map | Planned | Your party always shows the walking icon on the map, even when you ride. |
 | Sea travel | Travel & world map | Not in coop | Sea travel is a cheat-only option in native Warband and is not part of coop. |
+| Battle XP roll matches native's range | Combat | Known issue | Internal: battle XP can come out up to 1 percent higher than in single player. |
 | Zendar, the inn, the salt mine and Dhorak Keep | Towns | Not in coop | Places that native Warband never shows on the map are not part of coop. |
 | Visiting a town together | Towns | Planned | Only one player can visit a town at a time for now; visiting together is planned for the end of the roadmap. |
 | Tournaments with several players | Towns | Planned | Players cannot yet compete in the same tournament. |
@@ -216,6 +224,7 @@ Everything left, including meta and reports.
 | Internal cleanup: unused start-location message | Stability | Planned | Internal cleanup: an unused network message is still defined. |
 | Internal engine-hook cleanup | Stability | Planned | Internal code cleanup, no player-visible effect. |
 | Internal code cleanup | Stability | Planned | Internal cleanup, no effect on play. |
+| Server hang reports show the game's own thread | Stability | Known issue | Internal: a server hang report records the wrong thread, so it takes longer to diagnose. |
 
 ## Outside the campaign
 

@@ -21,27 +21,22 @@ echo Deploying to: %GAMEDIR%
 set DEPLOY_WARN=0
 
 if exist bin\CoopWSEPlugin.dll (
-    copy /Y bin\CoopWSEPlugin.dll "%GAMEDIR%\" >nul && echo Deployed CoopWSEPlugin.dll || call :warn CoopWSEPlugin.dll
+    copy /Y bin\CoopWSEPlugin.dll "%GAMEDIR%\" >nul && echo Deployed CoopWSEPlugin.dll || (echo WARN: could not copy CoopWSEPlugin.dll ^(file locked by running game/server?^) & set /a DEPLOY_WARN+=1)
 )
 if exist bin\warband_coop.asi (
-    copy /Y bin\warband_coop.asi "%GAMEDIR%\" >nul && echo Deployed warband_coop.asi || call :warn warband_coop.asi
+    copy /Y bin\warband_coop.asi "%GAMEDIR%\" >nul && echo Deployed warband_coop.asi || (echo WARN: could not copy warband_coop.asi ^(file locked by running game/server?^) & set /a DEPLOY_WARN+=1)
 )
 if exist bin\winmm.dll (
-    copy /Y bin\winmm.dll "%GAMEDIR%\" >nul && echo Deployed winmm.dll || call :warn winmm.dll
+    copy /Y bin\winmm.dll "%GAMEDIR%\" >nul && echo Deployed winmm.dll || (echo WARN: could not copy winmm.dll ^(file locked by running game/server?^) & set /a DEPLOY_WARN+=1)
 )
 
 rem The winmm proxy forwards to the real system winmm saved as winmm_sys.dll.
 if exist bin\winmm.dll if not exist "%GAMEDIR%\winmm_sys.dll" (
-    copy /Y "%SystemRoot%\SysWOW64\winmm.dll" "%GAMEDIR%\winmm_sys.dll" >nul && echo Created winmm_sys.dll from system copy || call :warn winmm_sys.dll
+    copy /Y "%SystemRoot%\SysWOW64\winmm.dll" "%GAMEDIR%\winmm_sys.dll" >nul && echo Created winmm_sys.dll from system copy || (echo WARN: could not copy winmm_sys.dll ^(file locked by running game/server?^) & set /a DEPLOY_WARN+=1)
 )
 
 if not exist "%GAMEDIR%\coop.ini" (
-    copy /Y deploy\coop.ini "%GAMEDIR%\" >nul && echo Created coop.ini ^(default: host mode^)
-)
-
-if exist lua\main.lua (
-    if not exist "%GAMEDIR%\Modules\COOP\lua" mkdir "%GAMEDIR%\Modules\COOP\lua"
-    copy /Y lua\main.lua "%GAMEDIR%\Modules\COOP\lua\" >nul && echo Deployed lua\main.lua || call :warn main.lua
+    copy /Y deploy\coop.ini "%GAMEDIR%\" >nul && echo Created coop.ini
 )
 
 if %DEPLOY_WARN%==0 (
@@ -49,9 +44,4 @@ if %DEPLOY_WARN%==0 (
 ) else (
     echo === Deploy finished with %DEPLOY_WARN% warning^(s^) -- close game/servers and rerun build\deploy.bat ===
 )
-exit /b 0
-
-:warn
-echo WARN: could not copy %1 ^(file locked by running game/server?^)
-set /a DEPLOY_WARN+=1
 exit /b 0

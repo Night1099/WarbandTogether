@@ -576,6 +576,7 @@ coop_mission_templates = [
         (try_begin),
           (eq, "$coop_battle_state", coop_battle_state_none),
           (call_script, "script_coop_on_admin_panel_load"),
+          (call_script, "script_coop_battle_send_home_if_abandoned", ":player_no"),
           (try_begin),
             (eq, "$coop_battle_state", coop_battle_state_setup_mp),
             (team_set_faction, 0, "$coop_team_1_faction"),
@@ -1039,6 +1040,11 @@ coop_mission_templates = [
           (assign, "$g_multiplayer_ready_for_spawning_agent", 1),
           (store_mission_timer_a, "$coop_last_agent_event_time"),
           (agent_set_slot, ":agent_no", slot_agent_coop_spawn_party, "$coop_agent_party"), #store party of agent
+          (try_begin),
+            (agent_is_human, ":agent_no"),
+            (agent_is_non_player, ":agent_no"),
+            (call_script, "script_coop_agent_init_courage", ":agent_no"),
+          (try_end),
 
           (call_script, "script_coop_equip_player_agent", ":agent_no"), #ITEM BUG WORKAROUND
         (try_end),
@@ -1373,29 +1379,6 @@ coop_mission_templates = [
 	  
 ###########Torch (Coop Version) by troycall/Envious Arm end
 		 
-		 		#Morale
-
-		#		(-25.0, 0.0, 0.0,
-		#[],
-        #
-		#[
-		#	(store_trigger_param_1, ":trigger_param_1"),
-		#	(call_script, "script_agent_reassign_team", ":trigger_param_1"),
-		#	(assign, ":var_2", 5000),
-		#	(agent_get_troop_id, ":troop_id_trigger_param_1", ":trigger_param_1"),
-		#	(store_character_level, ":character_level_troop_id_trigger_param_1", ":troop_id_trigger_param_1"),
-		#	(val_mul, ":character_level_troop_id_trigger_param_1", 35),
-		#	(val_add, ":var_2", ":character_level_troop_id_trigger_param_1"),
-		#	(store_random_in_range, ":random_in_range_0_3000", 0, 3000),
-		#	(val_add, ":var_2", ":random_in_range_0_3000"),
-		#	(agent_get_party_id, ":party_id_trigger_param_1", ":trigger_param_1"),
-		#	(ge, ":party_id_trigger_param_1", 0),
-		#	(party_get_morale, ":morale_party_id_trigger_param_1", ":party_id_trigger_param_1"),
-		#	(store_sub, ":value", ":morale_party_id_trigger_param_1", 70),
-		#	(val_mul, ":value", 30),
-		#	(val_add, ":var_2", ":value"),
-		#	(agent_set_slot, ":trigger_param_1", slot_agent_courage_score, ":var_2")
-		#]),
 		
 #				 		(-25.0, 0.0, 0.0,
 #		[],
@@ -4761,6 +4744,7 @@ coop_mission_templates = [
         (try_begin),
           (eq, "$coop_battle_state", coop_battle_state_none),
           (call_script, "script_coop_on_admin_panel_load"),
+          (call_script, "script_coop_battle_send_home_if_abandoned", ":player_no"),
           (try_begin),
             (eq, "$coop_battle_state", coop_battle_state_setup_mp),
             (assign, "$g_multiplayer_ready_for_spawning_agent", 1),
@@ -5226,6 +5210,11 @@ coop_mission_templates = [
           (assign, "$g_multiplayer_ready_for_spawning_agent", 1),
           (store_mission_timer_a, "$coop_last_agent_event_time"),
           (agent_set_slot, ":agent_no", slot_agent_coop_spawn_party, "$coop_agent_party"), #store party of agent
+          (try_begin),
+            (agent_is_human, ":agent_no"),
+            (agent_is_non_player, ":agent_no"),
+            (call_script, "script_coop_agent_init_courage", ":agent_no"),
+          (try_end),
           (call_script, "script_coop_equip_player_agent", ":agent_no"), #ITEM BUG WORKAROUND
         (try_end),
         (agent_set_slot, ":agent_no", slot_agent_coop_banner, "$coop_agent_banner"), #store banner of agent for clients too

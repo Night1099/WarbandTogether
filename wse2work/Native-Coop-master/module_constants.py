@@ -537,6 +537,7 @@ slot_party_orders_time				    	= 247
 
 slot_party_temp_slot_1			            = 248 #right now used only within a single script, merchant_road_info_to_s42, to denote closed roads. Now also used in comparative scripts
 slot_party_under_player_suggestion			= 249 #move this up a bit
+coop_battle_mark_local_fight                = 100 #slot_party_coop_battle_slot value for the opponent of a client-local fight (battle-server slots mark 1-4)
 slot_party_coop_battle_slot                 = 600 #battle-server slot+1 while this party's fight runs on a dedicated battle server; 0 = not in a battle. 600 = above every occupied party-slot range (trade good productions end ~546); party slots are one namespace shared with slot_village_*/slot_town_*/slot_center_*
 slot_town_trade_good_prices_begin 			= 250
 
@@ -2048,8 +2049,31 @@ slot_player_coop_quest_mask = 68
 # Campaign hour + 1 the per-player hour dispatcher (coop_player_hour_tick)
 # last ran; zero per connect, so the first tick after a connect runs.
 slot_player_coop_tick_hour = 69
+# Captivity record mirror (char dict is authoritative; coop_captivity_record_set
+# is the only writer). captor = party id, 0 = free; until = campaign hour of
+# the next escape / castle roll; ransom = pending offer, 0 = none.
+slot_player_coop_captor        = 70
+slot_player_coop_captive_kind  = 71
+slot_player_coop_captive_until = 72
+slot_player_coop_captive_ransom = 73
+# slot_player_coop_in_local_encounter value while captive (debug teleport gate).
+coop_busy_captive = 3
+coop_captive_kind_wilderness = 1
+coop_captive_kind_castle     = 2
+# ch125 64 int2 values beyond the two kinds.
+coop_captive_state_remain    = 3
+coop_captive_state_escaped   = 4
+coop_captive_state_exchanged = 5
+coop_captive_state_ransomed  = 6
+coop_captive_state_set_free  = 7
 # Native pay day: every 24 * 7 campaign hours (module_simple_triggers.py:717).
 coop_wage_week_hours = 168
+# ch125 65 int3: why a party's morale moved. Drift and sync are silent on
+# the client, as native's drift; reasons 2 and up (added by the morale
+# consumers) print native's gained/lost line.
+coop_morale_reason_drift = 0
+coop_morale_reason_sync  = 1
+coop_morale_reason_no_food = 2
 # Client-side quest slot: the server's looter kill count (ev 58). Native
 # reads an engine per-player counter instead, which coop cannot use.
 slot_quest_coop_count = 30          # native slot_quest_* end at 27
@@ -2196,6 +2220,9 @@ coop_battle_state_started              = 3
 coop_battle_state_end_mp               = 4
 coop_battle_state_end_sp               = 5
 coop_battle_state_abandoned            = 6
+# A written battle no player has loaded (still setup_sp) after this many
+# campaign hours (4 real s each with a player online) is released.
+coop_battle_start_timeout_hours = 15
 # Battle server pool: slot s listens on coop_battle_port_base + 2*s
 # (7241/7243/7245/7247 -- 7242 stays the DLL IPC port). Must match
 # deploy/configs/BattleServer_<s>.txt and src/battle_ipc.h IPC_MAX_BATTLE_SLOTS.

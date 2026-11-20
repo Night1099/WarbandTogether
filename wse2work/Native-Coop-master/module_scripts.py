@@ -878,7 +878,7 @@ scripts = [
 ##      (call_script, "script_give_center_to_lord", "p_town_16", "trp_player", 0),
 ####      (call_script, "script_give_center_to_lord", "p_castle_10", "trp_player", 0),
 ##      (assign, "$g_castle_requested_by_player", "p_castle_10"),
-      (call_script, "script_get_player_party_morale_values"),
+      (call_script, "script_get_player_party_morale_values", "p_main_party", "trp_player", "$g_player_debt_to_party_members"),
       (party_set_morale, "p_main_party", reg0),
 
       (troop_set_note_available, "trp_player", 1),
@@ -3188,6 +3188,18 @@ scripts = [
             (gt, ":observer_parties_num", 0),
             (assign, ":continue", 0),
          (else_try),
+            # A party fighting a player (battle server or local fight) is
+            # marked; the player's own party is disabled meanwhile, so the
+            # marker is what keeps the event -- and the engine's freeze of
+            # both parties -- until the result releases it.
+            (ge, ":root_defender_party", 0),
+            (party_slot_ge, ":root_defender_party", slot_party_coop_battle_slot, 1),
+            (assign, ":waiting_root", ":root_defender_party"),
+         (else_try),
+            (ge, ":root_attacker_party", 0),
+            (party_slot_ge, ":root_attacker_party", slot_party_coop_battle_slot, 1),
+            (assign, ":waiting_root", ":root_attacker_party"),
+         (else_try),
             (ge, ":root_defender_party", 0),
             (party_is_active, ":root_defender_party"),
             (call_script, "script_cf_coop_party_group_has_player", ":root_defender_party"),
@@ -4437,9 +4449,10 @@ scripts = [
             
       (val_div, reg0, 100),
       
-      (party_get_morale, reg1, "p_main_party"),
-      
-      (val_add, reg0, reg1),
+      (assign, ":faction_morale", reg0),
+      (call_script, "script_coop_my_party"),
+      (party_get_morale, reg1, reg0),
+      (store_add, reg0, ":faction_morale", reg1),
       
       (set_trigger_result, reg0),
   ]),
@@ -15186,17 +15199,18 @@ scripts = [
 
 
   #script_loot_player_items:
-  # INPUT: arg1 = enemy_party_no
+  # INPUT: arg1 = enemy_party_no, arg2 = looted troop
   # Output: none
   ("loot_player_items",
     [
       (store_script_param, ":enemy_party_no", 1),
+      (store_script_param, ":troop_no", 2),
       
-      (troop_get_inventory_capacity, ":inv_cap", "trp_player"),
+      (troop_get_inventory_capacity, ":inv_cap", ":troop_no"),
       (try_for_range, ":i_slot", 0, ":inv_cap"),
-        (troop_get_inventory_slot, ":item_id", "trp_player", ":i_slot"),
+        (troop_get_inventory_slot, ":item_id", ":troop_no", ":i_slot"),
         (ge, ":item_id", 0),
-        (troop_get_inventory_slot_modifier, ":item_modifier", "trp_player", ":i_slot"),
+        (troop_get_inventory_slot_modifier, ":item_modifier", ":troop_no", ":i_slot"),
         (try_begin),
           (is_between, ":item_id", trade_goods_begin, trade_goods_end),
           (assign, ":randomness", 20),
@@ -15217,7 +15231,7 @@ scripts = [
         (try_end),
         (store_random_in_range, ":random_no", 0, 100),
         (lt, ":random_no", ":randomness"),
-        (troop_remove_item, "trp_player", ":item_id"),
+        (troop_remove_item, ":troop_no", ":item_id"),
 
         (try_begin),
           (gt, ":enemy_party_no", 0),
@@ -15233,11 +15247,11 @@ scripts = [
           (party_set_slot, ":enemy_party_no", slot_party_next_looted_item_slot, ":cur_loot_slot"),
         (try_end),
       (try_end),
-      (store_troop_gold, ":cur_gold", "trp_player"),
+      (store_troop_gold, ":cur_gold", ":troop_no"),
       (store_div, ":max_lost", ":cur_gold", 5),
       (store_div, ":min_lost", ":cur_gold", 10),
       (store_random_in_range, ":lost_gold", ":min_lost", ":max_lost"),
-      (troop_remove_gold, "trp_player", ":lost_gold"),
+      (troop_remove_gold, ":troop_no", ":lost_gold"),
       ]),
 
   
@@ -15517,11 +15531,13 @@ scripts = [
   #script_party_remove_all_companions:
   # INPUT:
   # param1: Party-id from which  companions will be removed.
+  # param2: party whose faction jails the heroes ("$g_prison_heroes" = 1)
   # "$g_move_heroes" : controls if heroes will also be removed.
   
   ("party_remove_all_companions",
     [
       (store_script_param_1, ":party"), #Source Party_id
+      (store_script_param_2, ":enemy_party"),
       (party_get_num_companion_stacks, ":num_companion_stacks",":party"),
       (try_for_range_backwards, ":stack_no", 0, ":num_companion_stacks"),
         (party_stack_get_troop_id, ":stack_troop",":party",":stack_no"),
@@ -15532,18 +15548,18 @@ scripts = [
           (troop_is_hero, ":stack_troop"),
           (neg|is_between, ":stack_troop", pretenders_begin, pretenders_end),
           (neq, ":stack_troop", "trp_player"),
+          (neg|is_between, ":stack_troop", multiplayer_campaign_player_troops_begin, multiplayer_campaign_player_troops_end),
           (eq, "$g_prison_heroes", 1),
-          (eq, ":party", "p_main_party"),
           (store_random_in_range, ":succeed_escaping", 0, 2),
           (neq, ":succeed_escaping", 0), #50% chance companion stays with us.
           (troop_set_health, ":stack_troop", 100), #heal before leaving
-          (store_faction_of_party, ":enemy_faction", "$g_enemy_party"),
+          (store_faction_of_party, ":enemy_faction", ":enemy_party"),
           (assign, ":minimum_distance", 99999),
           (assign, ":prison_center", -1),
           (try_for_range, ":center", walled_centers_begin, walled_centers_end),
             (store_faction_of_party, ":center_faction", ":center"),
             (eq, ":center_faction", ":enemy_faction"),
-            (store_distance_to_party_from_party, ":dist", ":center", "p_main_party"),
+            (store_distance_to_party_from_party, ":dist", ":center", ":party"),
             (lt, ":dist", ":minimum_distance"),
             (assign, ":minimum_distance", ":dist"),
             (assign, ":prison_center", ":center"),
@@ -15732,19 +15748,21 @@ scripts = [
   ("clear_party_group",
     [
       (store_script_param_1, ":root_party"),
-	  
-      (party_clear, ":root_party"),
-	  
-	  (try_begin),
-	    (multiplayer_is_campaign),
-		(neg|party_is_non_player, ":root_party"),
-		(call_script, "script_multiplayer_campaign_player_party_defeated", ":root_party"),
-	  (try_end),
-	  
-      (party_get_num_attached_parties, ":num_attached_parties", ":root_party"),
-      (try_for_range, ":attached_party_rank", 0, ":num_attached_parties"),
-        (party_get_attached_party_with_rank, ":attached_party", ":root_party", ":attached_party_rank"),
-        (call_script, "script_clear_party_group", ":attached_party"),
+      (try_begin),
+        (multiplayer_is_campaign),
+        (neg|party_is_non_player, ":root_party"),
+        (call_script, "script_multiplayer_campaign_player_party_defeated", ":root_party"),
+      (else_try),
+        (party_clear, ":root_party"),
+        (try_begin),
+          (multiplayer_is_campaign),
+          (call_script, "script_coop_captivity_release_party_captives", ":root_party"),
+        (try_end),
+        (party_get_num_attached_parties, ":num_attached_parties", ":root_party"),
+        (try_for_range_backwards, ":attached_party_rank", 0, ":num_attached_parties"),
+          (party_get_attached_party_with_rank, ":attached_party", ":root_party", ":attached_party_rank"),
+          (call_script, "script_clear_party_group", ":attached_party"),
+        (try_end),
       (try_end),
   ]),
   
@@ -17035,6 +17053,7 @@ scripts = [
       (try_for_range, ":i_stack", 0, ":num_stacks"),
         (party_stack_get_troop_id, ":stack_troop",":party",":i_stack"),
         (neq, ":stack_troop", "trp_player"),
+        (neg|is_between, ":stack_troop", multiplayer_campaign_player_troops_begin, multiplayer_campaign_player_troops_end),
         (assign, ":num_fit",0),
         (try_begin),
           (troop_is_hero, ":stack_troop"),
@@ -25083,20 +25102,22 @@ scripts = [
   ]),
 
   # script_cf_player_has_item_without_modifier
-  # Input: arg1 = item_id, arg2 = modifier
+  # Input: arg1 = item_id, arg2 = modifier, arg3 = troop_no
   # Output: none (can_fail)
   ("cf_player_has_item_without_modifier",
     [
       (store_script_param, ":item_id", 1),
       (store_script_param, ":modifier", 2),
-      (player_has_item, ":item_id"),
+      (store_script_param, ":troop_no", 3),
+      (store_item_kind_count, ":item_count", ":item_id", ":troop_no"),
+      (gt, ":item_count", 0),
       #checking if any of the meat is not rotten
       (assign, ":has_without_modifier", 0),
-      (troop_get_inventory_capacity, ":inv_size", "trp_player"),
+      (troop_get_inventory_capacity, ":inv_size", ":troop_no"),
       (try_for_range, ":i_slot", 0, ":inv_size"),
-        (troop_get_inventory_slot, ":cur_item", "trp_player", ":i_slot"),
+        (troop_get_inventory_slot, ":cur_item", ":troop_no", ":i_slot"),
         (eq, ":cur_item", ":item_id"),
-        (troop_get_inventory_slot_modifier, ":cur_modifier", "trp_player", ":i_slot"),
+        (troop_get_inventory_slot_modifier, ":cur_modifier", ":troop_no", ":i_slot"),
         (neq, ":cur_modifier", ":modifier"),
         (assign, ":has_without_modifier", 1),
         (assign, ":inv_size", 0), #break
@@ -25105,29 +25126,33 @@ scripts = [
   ]),
 
   # script_get_player_party_morale_values
+  # Input: arg1 = party_no, arg2 = troop_no (its leader), arg3 = debt to party members
   # Output: reg0 = player_party_morale_target
   ("get_player_party_morale_values",
     [
-      (party_get_num_companion_stacks, ":num_stacks","p_main_party"),
+      (store_script_param, ":party_no", 1),
+      (store_script_param, ":troop_no", 2),
+      (store_script_param, ":debt", 3),
+      (party_get_num_companion_stacks, ":num_stacks",":party_no"),
       (assign, ":num_men", 0),
       (try_for_range, ":i_stack", 1, ":num_stacks"),
-        (party_stack_get_troop_id, ":stack_troop","p_main_party",":i_stack"),
+        (party_stack_get_troop_id, ":stack_troop",":party_no",":i_stack"),
         (try_begin),
           (troop_is_hero, ":stack_troop"),
           (val_add, ":num_men", 1), #it was 3 in "Mount&Blade", now it is 1 in Warband
         (else_try),
-          (party_stack_get_size, ":stack_size","p_main_party",":i_stack"),
+          (party_stack_get_size, ":stack_size",":party_no",":i_stack"),
           (val_add, ":num_men", ":stack_size"),
         (try_end),
       (try_end),
       (assign, "$g_player_party_morale_modifier_party_size", ":num_men"),
     
-      (store_skill_level, ":player_leadership", "skl_leadership", "trp_player"),
+      (store_skill_level, ":player_leadership", "skl_leadership", ":troop_no"),
       
       (try_begin),
         (eq, "$players_kingdom", "fac_player_supporters_faction"),
         (faction_get_slot, ":cur_faction_king", "$players_kingdom", slot_faction_leader),
-        (eq, ":cur_faction_king", "trp_player"),
+        (eq, ":cur_faction_king", ":troop_no"),
         (store_mul, "$g_player_party_morale_modifier_leadership", ":player_leadership", 15),
       (else_try),  
         (store_mul, "$g_player_party_morale_modifier_leadership", ":player_leadership", 12),
@@ -25140,7 +25165,7 @@ scripts = [
       
       (assign, "$g_player_party_morale_modifier_food", 0),
       (try_for_range, ":cur_edible", food_begin, food_end),      
-        (call_script, "script_cf_player_has_item_without_modifier", ":cur_edible", imod_rotten),
+        (call_script, "script_cf_player_has_item_without_modifier", ":cur_edible", imod_rotten, ":troop_no"),
         (item_get_slot, ":food_bonus", ":cur_edible", slot_item_food_bonus),
         
         (val_mul, ":food_bonus", 3),
@@ -25160,11 +25185,16 @@ scripts = [
 
       (assign, "$g_player_party_morale_modifier_debt", 0),
       (try_begin),
-        (gt, "$g_player_debt_to_party_members", 0),
-        (call_script, "script_calculate_player_faction_wage"),
+        (gt, ":debt", 0),
+        (try_begin),
+          (is_between, ":party_no", multiplayer_campaign_player_parties_begin, multiplayer_campaign_player_parties_end),
+          (call_script, "script_coop_party_weekly_wage", ":party_no", 0),
+        (else_try),
+          (call_script, "script_calculate_player_faction_wage"),
+        (try_end),
         (assign, ":total_wages", reg0),
-        (store_mul, "$g_player_party_morale_modifier_debt", "$g_player_debt_to_party_members", 10),
-		(val_max, ":total_wages", 1),
+        (store_mul, "$g_player_party_morale_modifier_debt", ":debt", 10),
+			(val_max, ":total_wages", 1),
         (val_div, "$g_player_party_morale_modifier_debt", ":total_wages"),
         (val_clamp, "$g_player_party_morale_modifier_debt", 1, 31),
         (val_sub, ":new_morale", "$g_player_party_morale_modifier_debt"),
@@ -31234,29 +31264,100 @@ scripts = [
 
 
   # script_consume_food
-  # Input: arg1: order of the food to be consumed
+  # Input: arg1: order of the food to be consumed, arg2: troop_no whose inventory is eaten from
   # Output: none
   ("consume_food",
    [(store_script_param, ":selected_food", 1),
-    (troop_get_inventory_capacity, ":capacity", "trp_player"),
+    (store_script_param, ":troop_no", 2),
+    (troop_get_inventory_capacity, ":capacity", ":troop_no"),
     (try_for_range, ":cur_slot", 0, ":capacity"),
-      (troop_get_inventory_slot, ":cur_item", "trp_player", ":cur_slot"),
+      (troop_get_inventory_slot, ":cur_item", ":troop_no", ":cur_slot"),
       (is_between, ":cur_item", food_begin, food_end),
-      (troop_get_inventory_slot_modifier, ":item_modifier", "trp_player", ":cur_slot"),
+      (troop_get_inventory_slot_modifier, ":item_modifier", ":troop_no", ":cur_slot"),
       (neq, ":item_modifier", imod_rotten),
       (item_slot_eq, ":cur_item", slot_item_is_checked, 0),
       (item_set_slot, ":cur_item", slot_item_is_checked, 1),
       (val_sub, ":selected_food", 1),
       (lt, ":selected_food", 0),
       (assign, ":capacity", 0),
-      (troop_inventory_slot_get_item_amount, ":cur_amount", "trp_player", ":cur_slot"),
+      (troop_inventory_slot_get_item_amount, ":cur_amount", ":troop_no", ":cur_slot"),
       (val_sub, ":cur_amount", 1),
-      (troop_inventory_slot_set_item_amount, "trp_player", ":cur_slot", ":cur_amount"),
+      (troop_inventory_slot_set_item_amount, ":troop_no", ":cur_slot", ":cur_amount"),
+      (try_begin),
+        (le, ":cur_amount", 0),
+        (troop_set_inventory_slot, ":troop_no", ":cur_slot", -1),
+      (try_end),
     (try_end),
     ]),
 
-	
-	
+  # script_party_consume_food
+  # Input: arg1: party_no whose size sets the meals, arg2: troop_no whose inventory is eaten from
+  # Output: reg0 = 1 when at least one meal found nothing to eat, else 0
+  #         reg1 = 1 when at least one meal ate from the inventory, else 0
+  ("party_consume_food",
+   [(store_script_param, ":party_no", 1),
+    (store_script_param, ":troop_no", 2),
+    (party_get_num_companion_stacks, ":num_stacks", ":party_no"),
+    (assign, ":num_men", 0),
+    (try_for_range, ":i_stack", 0, ":num_stacks"),
+      (party_stack_get_size, ":stack_size", ":party_no", ":i_stack"),
+      (val_add, ":num_men", ":stack_size"),
+    (try_end),
+    (val_div, ":num_men", 3),
+    (try_begin),
+      (eq, ":num_men", 0),
+      (val_add, ":num_men", 1),
+    (try_end),
+    (assign, ":no_food_found", 0),
+    (assign, ":ate", 0),
+    (try_for_range, ":unused", 0, ":num_men"),
+      (assign, ":available_food", 0),
+      (try_for_range, ":cur_food", food_begin, food_end),
+        (item_set_slot, ":cur_food", slot_item_is_checked, 0),
+        (call_script, "script_cf_player_has_item_without_modifier", ":cur_food", imod_rotten, ":troop_no"),
+        (val_add, ":available_food", 1),
+      (try_end),
+      (try_begin),
+        (gt, ":available_food", 0),
+        (store_random_in_range, ":selected_food", 0, ":available_food"),
+        (call_script, "script_consume_food", ":selected_food", ":troop_no"),
+        (assign, ":ate", 1),
+      (else_try),
+        (assign, ":no_food_found", 1),
+      (try_end),
+    (try_end),
+    (assign, reg0, ":no_food_found"),
+    (assign, reg1, ":ate"),
+    ]),
+
+  # script_troop_age_food
+  # Input: arg1: troop_no whose meat ages one step
+  # Output: reg0 = 1 when any modifier changed, else 0
+  ("troop_age_food",
+   [(store_script_param, ":troop_no", 1),
+    (assign, ":changed", 0),
+    (troop_get_inventory_capacity, ":inv_size", ":troop_no"),
+    (try_for_range, ":i_slot", 0, ":inv_size"),
+      (troop_get_inventory_slot, ":item_id", ":troop_no", ":i_slot"),
+      (this_or_next|eq, ":item_id", "itm_cattle_meat"),
+      (this_or_next|eq, ":item_id", "itm_chicken"),
+      (eq, ":item_id", "itm_pork"),
+      (troop_get_inventory_slot_modifier, ":modifier", ":troop_no", ":i_slot"),
+      (try_begin),
+        (ge, ":modifier", imod_fresh),
+        (lt, ":modifier", imod_rotten),
+        (val_add, ":modifier", 1),
+        (troop_set_inventory_slot_modifier, ":troop_no", ":i_slot", ":modifier"),
+        (assign, ":changed", 1),
+      (else_try),
+        (lt, ":modifier", imod_fresh),
+        (troop_set_inventory_slot_modifier, ":troop_no", ":i_slot", imod_fresh),
+        (assign, ":changed", 1),
+      (try_end),
+    (try_end),
+    (assign, reg0, ":changed"),
+    ]),
+
   # script_calculate_troop_score_for_center
   # Input: arg1 = troop_no, arg2 = center_no
   # Output: reg0 = score
@@ -35426,14 +35527,15 @@ scripts = [
     ]),
 
   # script_set_parties_around_player_ignore_player
-  # Input: arg1 = ignore_range, arg2 = num_hours_to_ignore
+  # Input: arg1 = ignore_range, arg2 = num_hours_to_ignore, arg3 = party at the centre
   # Output: none
   ("set_parties_around_player_ignore_player",
     [(store_script_param, ":ignore_range", 1),
      (store_script_param, ":num_hours", 2),
+     (store_script_param, ":centre_party", 3),
      (try_for_parties, ":party_no"),
        (party_is_active, ":party_no"),
-       (store_distance_to_party_from_party, ":dist", "p_main_party", ":party_no"),
+       (store_distance_to_party_from_party, ":dist", ":centre_party", ":party_no"),
        (lt, ":dist", ":ignore_range"),
        (party_ignore_player, ":party_no", ":num_hours"),
      (try_end),

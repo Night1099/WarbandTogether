@@ -12366,7 +12366,18 @@ presentations = [
       (assign, ":main_party", reg0),
       (call_script, "script_coop_my_troop"),
       (assign, ":main_troop", reg0),
-      
+      # A coop payday report shows the week as it stood before the campaign
+      # server paid it (native opens the report before paying).
+      (assign, ":earlier_debt", "$g_player_debt_to_party_members"),
+      (store_troop_gold, ":player_wealth", ":main_troop"),
+      (assign, ":payday_report", "$g_coop_budget_report_payday"),
+      (try_begin),
+        (eq, ":payday_report", 1),
+        (assign, "$g_coop_budget_report_payday", 0),
+        (assign, ":earlier_debt", "$g_coop_payday_debt_before"),
+        (assign, ":player_wealth", "$g_coop_payday_gold_before"),
+      (try_end),
+
       (create_mesh_overlay, reg1, "mesh_pic_payment"),
       (position_set_x, pos1, 800),
       (position_set_y, pos1, 800),
@@ -12461,7 +12472,7 @@ presentations = [
         (val_add, ":num_lines", 1), #include empty towns/castles
       (try_end),
       (try_begin),
-        (gt, "$g_player_debt_to_party_members", 0),
+        (gt, ":earlier_debt", 0),
         (val_add, ":num_lines", 2), #include new debt line
       (try_end),
       (val_add, ":num_lines", 3),
@@ -12803,6 +12814,10 @@ presentations = [
           (val_div, ":total_wage", 2), #Half payment for garrisons
         (else_try),
           (eq, ":party_no", ":main_party"),
+          (eq, ":payday_report", 1),
+          (assign, ":total_wage", "$g_coop_payday_wage"), #the wage the campaign server charged
+        (else_try),
+          (eq, ":party_no", ":main_party"),
           (store_sub, ":total_payment_ratio", 14, "$g_cur_week_half_daily_wage_payments"), #between 0 and 7
           (val_mul, ":total_wage", ":total_payment_ratio"),
           (val_div, ":total_wage", 14),
@@ -12840,8 +12855,8 @@ presentations = [
       (try_end),
 
       (try_begin),
-        (gt, "$g_player_debt_to_party_members", 0),
-        (val_sub, ":net_change", "$g_player_debt_to_party_members"),
+        (gt, ":earlier_debt", 0),
+        (val_sub, ":net_change", ":earlier_debt"),
         (create_text_overlay, reg1, "str_earlier_debts", 0),
         (position_set_x, pos1, 900),
         (position_set_y, pos1, 900),
@@ -12849,7 +12864,7 @@ presentations = [
         (position_set_x, pos1, 25),
         (position_set_y, pos1, ":cur_y"),
         (overlay_set_position, reg1, pos1),
-        (store_mul, reg0, "$g_player_debt_to_party_members", -1),
+        (store_mul, reg0, ":earlier_debt", -1),
         (create_text_overlay, reg1, "@{!}{reg0}", tf_right_align|tf_single_line),
         (position_set_x, pos1, 900),
         (position_set_y, pos1, 900),
@@ -12899,7 +12914,6 @@ presentations = [
       (position_set_x, pos1, 25),
       (position_set_y, pos1, ":cur_y"),
       (overlay_set_position, reg1, pos1),
-      (store_troop_gold, ":player_wealth", ":main_troop"),
       (assign, reg0, ":player_wealth"),
       (create_text_overlay, reg1, "@{!}{reg0}", tf_right_align|tf_single_line),
       (position_set_x, pos1, 900),

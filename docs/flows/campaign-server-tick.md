@@ -4,9 +4,9 @@
 (`562482c` gate, `6a72f6b` config-dict naming; `$g_coop_debug_reveal`
 read 1 live 2026-09-24), D2/D4 implemented (build/config, not
 runtime-tested), D3 apply-verified (drain effect unmeasured)
-**Validated against commit:** `6a72f6b` (RE 2026-09-20 against the deployed
-1145 exes with their PDBs; the campaign exe's RE project is
-`patches/WarbandDedicated`); row 6 runtime-verified at `d6ec076`, 2026-10-03
+**Validated against commit:** `6a72f6b` (engine VAs from RE 2026-09-20 against
+the deployed 1145 exes with their PDBs; the campaign exe's RE project is
+`patches/WarbandDedicated`); row 6 runtime-verified at `d6ec076`, 2026-10-03. **Source anchors audited at** `f2a639e` (2026-11-18, not runtime-validated; engine VAs not re-checked)
 
 ## Scope
 
@@ -64,12 +64,12 @@ sequenceDiagram
 | 11 | Per-client pacing incl. backlog arm | campaign exe | 0x499D30 | `mbnetNetworkServer::sendToPlayer` |
 | 12 | Backlog ceiling load (patched operand at +4) | campaign exe / battle exe | 0x499D89 / 0x4C56A9 | `movss xmm1,[0.1f]` |
 | 13 | Backlog flag latch `= !fillPacket()` | campaign exe | 0x499FE4 | `mov [edi+0x19C], al` |
-| 14 | Debug reveal trigger (D1), gated on `$g_coop_debug_reveal` | `module_simple_triggers.py` | 263 | `(6, [multiplayer_is_server, multiplayer_is_campaign, eq $g_coop_debug_reveal 1, ... party_set_flags pf_always_visible ...])` |
-| 15 | Bandit-lair reveal block (D2, now SP-only) | `module_simple_triggers.py` | 2189 (lair gate 2231) | 0.1-interval attach-lords trigger |
+| 14 | Debug reveal trigger (D1), gated on `$g_coop_debug_reveal` | `module_simple_triggers.py` | 288 | `(6, [multiplayer_is_server, multiplayer_is_campaign, eq $g_coop_debug_reveal 1, ... party_set_flags pf_always_visible ...])` |
+| 15 | Bandit-lair reveal block (D2, now SP-only) | `module_simple_triggers.py` | 2216 (lair gate 2258) | 0.1-interval attach-lords trigger |
 | 16 | Backlog ceiling knob + disp32 re-point | `src/shared/nettune.c` | `backlog_site` | `BacklogPeriodMs` |
 | 17 | Site addresses | `src/shared/warband_addrs_wse2.h` | `CAMP_/DED_NT_BACKLOG_CEIL_*` | |
 | 18 | Frame cap (D4) | `deploy/configs/server_config.ini` | `iMaxFrameRate=100` | |
-| 19 | Debug reveal plumbing: `COOP_DEBUG_REVEAL` env -> `coop server cfg campaign.wsedict{debug reveal}` -> `$g_coop_debug_reveal` (spaces on disk: the module's `@coop_server_cfg_campaign` / `@debug_reveal` lose their underscores at quick-string load) | `deploy/scripts/coop_launch_all_debug.bat`, `src/coop_campaign.c`, `module_coop_scripts.py` | 372 / 16677 | `wsedict_set_int(d, "debug reveal", ...)` / `coop_apply_server_cfg` |
+| 19 | Debug reveal plumbing: `COOP_DEBUG_REVEAL` env -> `coop server cfg campaign.wsedict{debug reveal}` -> `$g_coop_debug_reveal` (spaces on disk: the module's `@coop_server_cfg_campaign` / `@debug_reveal` lose their underscores at quick-string load) | `deploy/scripts/coop_launch_all_debug.bat`, `src/coop_campaign.c` (env read 282–284, call 312), `src/coop_config.c`, `module_coop_scripts.py` | `coop_config.c` 55 / 18270 | `wsedict_set_int(d, "debug reveal", ...)` / `coop_apply_server_cfg` |
 
 ## State & events
 
@@ -120,7 +120,7 @@ sequenceDiagram
 | 3 | Party positions reach clients via replication | Engine native | `updateReplicationData` 0x49D4F0 diffs 4 rows per party by exact inequality every frame; `sendPartyReplicationData` 0x49B920 round-robin per client, cut at 0x2A2F bits; `getPartyReplicationPriority` 0x4A7630 is 1/0 on disabled (0x100), static (0x400), dont-send (0x8000). No visibility or distance cull exists | OK |
 | 4 | Send pacing while a client has a backlog | Stock: `max(m_packetSendPeriod, min(0.1f, ping_ms / 0.001f * 0.7f))` -- `divss` where a `mulss` was meant (0x499D91), so the min saturates for any ping >= 1 ms and the client is pinned to 10 Hz exactly when it is behind | Fixed in `226e956`: `BacklogPeriodMs` re-points the disp32 of the single ceiling load (0x499D8D campaign / 0x4C56AD battle) at `g_backlog_period_s`; default 33 ms collapses the arm to `m_packetSendPeriod`. The 0.1f dword has 39 readers (campaign) / 103 (battle, incl. `mbCoreGame::frameMove`'s dt clamp) so it is not rewritten. Verified applying on both exes 2026-09-20 (host log `backlog_ceiling: 0x00DE7BEC -> ...`, battle log `0x0073B870 -> ...`); drain-time effect not yet measured with a client | OK (D3, implemented, apply-verified, effect unverified) |
 | 5 | Main loop at 240 fps | `server_config.ini` 240 -> 100 (`197f230`) | Sends cap at 30 Hz per client (`computePacketValues` floor 0x887BC0); every frame still walks all parties (anchor 8) and runs per-party `frameMove`; campaign time integrates from dt so the cap is CPU only | OK (D4, config, not runtime-tested) |
-| 6 | Simple-trigger interval unit on this personality | Module comments assume seconds (autosave `(300, ...)` "5 min") | `mbSimpleTrigger::execute` 0x4E5FF0 compares against timer 1 = the campaign date clock (same accumulator `mbGame::frameMove` divides by 100000 for `m_hour`), advanced at 0.25 h per real second -> 1 game hour = 4 s, so 300 = 20 min, 6 = 24 s, 24 = 96 s. A first-pass reading called it seconds; the deeper trace says hours | OK -- campaign hours, runtime-verified 2026-10-03 (wages_morale gate step 0: the `(1, ...)` trigger fired exactly once per campaign hour, `[TICK] hour H, fires 1` for hours 398-421). Module comments that assume seconds (autosave `(300, ...)` "5 minutes") are wrong: 300 = 20 real min with a player online |
+| 6 | Simple-trigger interval unit on this personality | Autosave `(300, ...)` (`module_simple_triggers.py` 4616; debug launch `(75, ...)`), commented as campaign hours | `mbSimpleTrigger::execute` 0x4E5FF0 compares against timer 1 = the campaign date clock (same accumulator `mbGame::frameMove` divides by 100000 for `m_hour`), advanced at 0.25 h per real second -> 1 game hour = 4 s, so 300 = 20 min, 6 = 24 s, 24 = 96 s. A first-pass reading called it seconds; the deeper trace says hours | OK -- campaign hours, runtime-verified 2026-10-03 (wages_morale gate step 0: the `(1, ...)` trigger fired exactly once per campaign hour, `[TICK] hour H, fires 1` for hours 398-421). 300 = 20 real min with a player online, 75 = 5 real min |
 | 7 | `stop_time` pauses the campaign server clock | Console `campaign_pause` uses opcode 3608 | `mbGame::m_paused` (+0x39C) has one writer, the ctor (= 0); 3608 is a mission-pause op. The clock never stops on this personality | DIVERGES (documented, no fix requested) |
 | 8 | Plugin per-frame work | `coop_on_frame` heartbeat + one global read | Negligible; IPC on its own thread | OK |
 
@@ -135,9 +135,9 @@ sequenceDiagram
 
 ## Open questions
 
-- Audit row 6: seconds vs. game hours. Resolve by counting hits of any
-  known trigger over 60 s with a client connected, or reading
-  `g_timersTotal[1]` twice 10 s apart (expect +250000 if hours).
+- Audit row 6 is settled (campaign hours). Coop triggers on this clock: 0.5 cfg apply + `coop_captivity_follow_captors`,
+  1 `coop_player_hour_tick` per player (4837), 300/75 `coop_save_all`, 0 `coop_world_save` on last exit;
+  none calls `party_set_flags`. Their per-fire cost on the frame has not been measured.
 - D3 effect: trace the backlog latch (0x499FE4) during a join and confirm
   `+0x300` advances at `m_packetSendPeriod`, not 0.1 s.
 - D2/D4 have only been built/configured, not observed with players; the

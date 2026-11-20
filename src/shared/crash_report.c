@@ -3,21 +3,15 @@
 #include <psapi.h>
 #include <string.h>
 #include "crash_report.h"
+#include "crash_ring.h"
+#include "crash_watchdog.h"
+#include "crash_classify.h"
+#include "module_dir.h"
 
-/* ------------------------------------------------------------------ */
-/*  Ring buffer                                                        */
-/* ------------------------------------------------------------------ */
-
-#define RING_SIZE      128
-#define RING_ENTRY_LEN 256
-
-static char          g_ring[RING_SIZE][RING_ENTRY_LEN];
-static volatile LONG g_ring_head = 0;
+static crash_ring_t g_ring;
 
 void crash_ring_write(const char *msg) {
-    LONG slot = InterlockedIncrement(&g_ring_head) - 1;
-    char *dst = g_ring[slot & (RING_SIZE - 1)];
-    lstrcpynA(dst, msg, RING_ENTRY_LEN);
+    crash_ring_put(&g_ring, msg);
 }
 
 /* ------------------------------------------------------------------ */
@@ -34,8 +28,6 @@ static volatile LONG g_heartbeat = 0;
 static HANDLE g_main_thread = NULL;
 static HANDLE g_watchdog_thread = NULL;
 static volatile LONG g_watchdog_running = 0;
-#define WATCHDOG_INTERVAL_MS 5000
-#define WATCHDOG_TIMEOUT_MS  10000
 
 static LONG CALLBACK crash_veh_handler(PEXCEPTION_POINTERS pExInfo);
 static void make_crash_path(char *buf, int buf_size, const char *ext);
@@ -52,54 +44,44 @@ void crash_heartbeat(void) {
 }
 
 static DWORD WINAPI watchdog_thread(LPVOID param) {
-    LONG last_beat = 0;
-    DWORD stale_ms = 0;
+    crash_watchdog_t wd = { 0, 0 };
     (void)param;
 
     while (g_watchdog_running) {
-        Sleep(WATCHDOG_INTERVAL_MS);
+        Sleep(CRASH_WATCHDOG_INTERVAL_MS);
         if (!g_watchdog_running) break;
 
-        if (g_heartbeat == 0) continue;
+        if (crash_watchdog_tick(&wd, g_heartbeat) && g_main_thread) {
+            char dmp_path[MAX_PATH];
+            char txt_path[MAX_PATH];
+            CONTEXT ctx;
 
-        if (g_heartbeat == last_beat) {
-            stale_ms += WATCHDOG_INTERVAL_MS;
-            if (stale_ms >= WATCHDOG_TIMEOUT_MS && g_main_thread) {
-                char dmp_path[MAX_PATH];
-                char txt_path[MAX_PATH];
-                CONTEXT ctx;
+            if (InterlockedCompareExchange(&g_crash_handling, 1, 0) != 0)
+                break;
 
-                if (InterlockedCompareExchange(&g_crash_handling, 1, 0) != 0)
-                    break;
+            SuspendThread(g_main_thread);
+            ctx.ContextFlags = CONTEXT_FULL;
+            GetThreadContext(g_main_thread, &ctx);
 
-                SuspendThread(g_main_thread);
-                ctx.ContextFlags = CONTEXT_FULL;
-                GetThreadContext(g_main_thread, &ctx);
+            {
+                EXCEPTION_RECORD rec;
+                EXCEPTION_POINTERS ep;
+                memset(&rec, 0, sizeof(rec));
+                rec.ExceptionCode = 0xDEAD0001;
+                rec.ExceptionAddress = (PVOID)(DWORD_PTR)ctx.Eip;
+                ep.ExceptionRecord = &rec;
+                ep.ContextRecord = &ctx;
 
-                {
-                    EXCEPTION_RECORD rec;
-                    EXCEPTION_POINTERS ep;
-                    memset(&rec, 0, sizeof(rec));
-                    rec.ExceptionCode = 0xDEAD0001;
-                    rec.ExceptionAddress = (PVOID)(DWORD_PTR)ctx.Eip;
-                    ep.ExceptionRecord = &rec;
-                    ep.ContextRecord = &ctx;
-
-                    make_crash_path(dmp_path, MAX_PATH, ".dmp");
-                    make_crash_path(txt_path, MAX_PATH, ".txt");
-                    write_minidump(&ep, dmp_path);
-                    write_text_report(&ep, txt_path, dmp_path);
-                }
-                { extern void coop_flush_log(void); coop_flush_log(); }
-
-                ResumeThread(g_main_thread);
-                g_crash_handling = 0;
-                stale_ms = 0;
-                last_beat = g_heartbeat;
+                make_crash_path(dmp_path, MAX_PATH, ".dmp");
+                make_crash_path(txt_path, MAX_PATH, ".txt");
+                write_minidump(&ep, dmp_path);
+                write_text_report(&ep, txt_path, dmp_path);
             }
-        } else {
-            stale_ms = 0;
-            last_beat = g_heartbeat;
+            { extern void coop_flush_log(void); coop_flush_log(); }
+
+            ResumeThread(g_main_thread);
+            g_crash_handling = 0;
+            crash_watchdog_rearm(&wd, g_heartbeat);
         }
     }
     return 0;
@@ -122,7 +104,7 @@ void crash_init(HINSTANCE dll_instance, coop_mode_t mode) {
 void crash_shutdown(void) {
     g_watchdog_running = 0;
     if (g_watchdog_thread) {
-        WaitForSingleObject(g_watchdog_thread, WATCHDOG_INTERVAL_MS + 1000);
+        WaitForSingleObject(g_watchdog_thread, CRASH_WATCHDOG_INTERVAL_MS + 1000);
         CloseHandle(g_watchdog_thread);
         g_watchdog_thread = NULL;
     }
@@ -141,11 +123,8 @@ void crash_shutdown(void) {
 /* ------------------------------------------------------------------ */
 
 static void get_output_dir(char *buf, int buf_size) {
-    char *slash;
     GetModuleFileNameA(g_dll_instance, buf, buf_size);
-    slash = strrchr(buf, '\\');
-    if (slash) slash[1] = '\0';
-    else buf[0] = '\0';
+    module_dir(buf);
 }
 
 static void make_crash_path(char *buf, int buf_size, const char *ext) {
@@ -228,7 +207,7 @@ static void write_text_report(PEXCEPTION_POINTERS pExInfo, const char *path,
     SYSTEMTIME st;
     HMODULE mods[256];
     DWORD mod_bytes;
-    int i, count, start;
+    int i, count;
 
     hFile = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                         FILE_ATTRIBUTE_NORMAL, NULL);
@@ -252,9 +231,8 @@ static void write_text_report(PEXCEPTION_POINTERS pExInfo, const char *path,
          rec->ExceptionCode, (DWORD)rec->ExceptionAddress);
     if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
         rec->NumberParameters >= 2) {
-        const char *op = rec->ExceptionInformation[0] == 0 ? "READ" :
-                         rec->ExceptionInformation[0] == 1 ? "WRITE" : "DEP";
-        EMIT("%s of 0x%08X\r\n", op, (DWORD)rec->ExceptionInformation[1]);
+        EMIT("%s of 0x%08X\r\n", crash_av_op(rec->ExceptionInformation[0]),
+             (DWORD)rec->ExceptionInformation[1]);
     }
 
     /* Registers */
@@ -293,10 +271,9 @@ static void write_text_report(PEXCEPTION_POINTERS pExInfo, const char *path,
 
     /* Ring buffer */
     EMITS("\r\n--- Recent Log (oldest first) ---\r\n");
-    count = g_ring_head < RING_SIZE ? g_ring_head : RING_SIZE;
-    start = g_ring_head - count;
+    count = crash_ring_count(&g_ring);
     for (i = 0; i < count; i++) {
-        char *entry = g_ring[(start + i) & (RING_SIZE - 1)];
+        const char *entry = crash_ring_line(&g_ring, i);
         if (entry[0]) {
             EMIT("[%3d] %s", i + 1, entry);
         }
@@ -315,27 +292,8 @@ static void write_text_report(PEXCEPTION_POINTERS pExInfo, const char *path,
 /*  VEH Handler                                                        */
 /* ------------------------------------------------------------------ */
 
-static int is_fatal(DWORD code) {
-    switch (code) {
-    case EXCEPTION_ACCESS_VIOLATION:
-    case STATUS_HEAP_CORRUPTION:
-    case EXCEPTION_STACK_OVERFLOW:
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    case EXCEPTION_ILLEGAL_INSTRUCTION:
-    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-    case EXCEPTION_FLT_DENORMAL_OPERAND:
-    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-    case EXCEPTION_FLT_INVALID_OPERATION:
-    case EXCEPTION_FLT_OVERFLOW:
-    case EXCEPTION_FLT_UNDERFLOW:
-        return 1;
-    default:
-        return 0;
-    }
-}
-
 static LONG CALLBACK crash_veh_handler(PEXCEPTION_POINTERS pExInfo) {
-    if (!is_fatal(pExInfo->ExceptionRecord->ExceptionCode))
+    if (!crash_is_fatal(pExInfo->ExceptionRecord->ExceptionCode))
         return EXCEPTION_CONTINUE_SEARCH;
 
     if (InterlockedCompareExchange(&g_crash_handling, 1, 0) != 0)

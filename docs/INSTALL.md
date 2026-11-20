@@ -5,8 +5,8 @@
 > playthrough — your character persists on the host (autosaved about every
 > 20 minutes of play and on disconnect), and the campaign world is saved on
 > the same cadence and when the last player leaves, then continued on the
-> next server start; battle loot and the defeat path
-> aren't fully wired up yet, some siege and economy behavior diverges
+> next server start; battle loot isn't wired up yet and
+> being taken prisoner after a lost battle is still in testing, some siege and economy behavior diverges
 > from singleplayer, and longer sessions will hit bugs and desyncs. Grab
 > the current build from the
 > [Releases page](https://github.com/Night1099/WarbandTogether/releases)
@@ -130,10 +130,13 @@ Max 47 characters. Restart the servers after changing it.
 **Players** — put the same line in **your own** `coop.ini`
 (`Password=mypassword`; rename `coop.ini.example` to `coop.ini` first if
 you don't have one). With it there, invite auto-join sends the
-password for you, and battle-server hops authenticate automatically.
+password for you, and the hop to a battle server sends it too.
 Without it, accepting an invite only lands you in the multiplayer
 browser — you can still type the password into the browser's password
 box to join, but battles will reject you partway through the session.
+Known issue: on a passworded server a joiner can still fail the hop to
+a battle server even with `Password=` set. If you run into it, leave
+the password off for now.
 
 ---
 

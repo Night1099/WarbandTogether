@@ -92,9 +92,14 @@ coop_scripts = [
         (call_script, "script_coop_battle_slot_dict_name", "$coop_battle_slot"),
         (dict_load_file, "$coop_dict", s41, 2),
 
-        (dict_get_int, "$coop_battle_state", "$coop_dict", "@battle_state"), # 0 = no battle 1 = is setup 2 = is done
-        (eq, "$coop_battle_state", coop_battle_state_setup_sp),
+        # Read into a local: a file in any other state (abandoned, end_mp)
+        # must not latch $coop_battle_state, which gates every later join.
+        (dict_get_int, ":file_state", "$coop_dict", "@battle_state"),
+        (eq, ":file_state", coop_battle_state_setup_sp),
         (dict_set_int, "$coop_dict", "@battle_state", coop_battle_state_setup_mp), # disable starting twice
+        # A player reached this battle. The scene restart writes setup_sp
+        # back but keeps this key, which the campaign's unjoined check reads.
+        (dict_set_int, "$coop_dict", "@battle_joined", 1),
         (assign, "$coop_battle_state", coop_battle_state_setup_mp),
         (call_script, "script_coop_battle_slot_dict_name", "$coop_battle_slot"),
         (dict_save, "$coop_dict", s41),
@@ -626,6 +631,25 @@ coop_scripts = [
      ]),	
 #COOP WSE CUSTOM CODE, END CHANGE SETTINGS HERE, BY ENVIOUS.
 
+
+  # script_coop_battle_send_home_if_abandoned -- Input: player_no. Battle
+  # server: the campaign released this battle because nobody arrived within
+  # its timeout, so a late arrival goes back to the campaign (ch127 ev 55)
+  # instead of waiting in an empty scene.
+  ("coop_battle_send_home_if_abandoned",
+    [
+      (store_script_param, ":player_no", 1),
+      (dict_create, ":dict"),
+      (call_script, "script_coop_battle_slot_dict_name", "$coop_battle_slot"),
+      (dict_load_file, ":dict", s41),
+      (dict_get_int, ":file_state", ":dict", "@battle_state", 0),
+      (dict_free, ":dict"),
+      (try_begin),
+        (eq, ":file_state", coop_battle_state_abandoned),
+        (player_is_active, ":player_no"),
+        (multiplayer_send_int_to_player, ":player_no", multiplayer_event_coop_send_to_player, coop_event_return_to_campaign),
+      (try_end),
+    ]),
 
   # script_coop_get_battle_state
   ("coop_get_battle_state",
@@ -4670,6 +4694,7 @@ coop_scripts = [
         (call_script, "script_coop_battle_dict_read_roster_party", "$coop_dict", 0, reg20),
         (assign, ":num_prisoner_stacks_script_param_1_leaded_party_2", reg1),
         (assign, ":banner_mesh", reg2),
+        (assign, ":roster_morale", reg3),
         (troop_set_slot, "trp_temp_array_a", reg20, ":banner_mesh"),#encountered party banner
         (store_add, ":var_6", reg20, coop_temp_party_enemy_begin),
         (party_clear, ":var_6"),
@@ -4686,6 +4711,7 @@ coop_scripts = [
             (party_add_members, coop_temp_party_enemy_heroes, ":party_stack_troop_id_temp_party_localvariable", 1),
           (try_end),
         (try_end),
+        (party_set_morale, ":var_6", ":roster_morale"),
       (try_end), #end enemy parties
       # (troop_set_slot, "trp_temp_array_a", 100, ":cur_slot"),# slot 100 = 100 + number heroes + 1
       (assign, "$coop_num_bots_team_1", ":total_enemy_troops"), #count troops in battle
@@ -4703,6 +4729,7 @@ coop_scripts = [
         (call_script, "script_coop_battle_dict_read_roster_party", "$coop_dict", 1, reg20),
         (assign, ":num_prisoner_stacks_script_param_1_leaded_party_2", reg1),
         (assign, ":banner_mesh", reg2),
+        (assign, ":roster_morale", reg3),
         (troop_set_slot, "trp_temp_array_b", reg20, ":banner_mesh"),#encountered party banner
         (store_add, ":var_6", reg20, coop_temp_party_ally_begin),
         (party_clear, ":var_6"),
@@ -4724,6 +4751,7 @@ coop_scripts = [
           (try_end),
 
         (try_end),
+        (party_set_morale, ":var_6", ":roster_morale"),
       (try_end), #end ally parties
       # (troop_set_slot, "trp_temp_array_b", 100, ":cur_slot"),# slot 100 = 100 + number heroes + 1
       (assign, "$coop_num_bots_team_2", ":total_ally_troops"), #count troops in battle
@@ -6749,7 +6777,7 @@ coop_scripts = [
 
   # ------------------------------------------------------------------
   # Battle-dict schema: the roster and casualty key layout
-  #   @p_enemy{i}_partyid / _banner / _numstacks      (same for ally)
+  #   @p_enemy{i}_partyid / _banner / _numstacks / _morale  (same for ally)
   #   @p_enemy{i}_{j}_trp / _num                      (same for ally)
   #   @p_enemy{i}_numstacks_cas / @p_ally{i}_numstacks_cas
   #   @p_enemy{i}_{j}_trp_cas / _ded / _wnd           (same for ally)
@@ -6845,7 +6873,7 @@ coop_scripts = [
 
   # Read twin of coop_battle_dict_write_roster_party.
   # Input: arg1 = dict, arg2 = side, arg3 = party index.
-  # Output: reg0 = party id, reg1 = numstacks, reg2 = banner.
+  # Output: reg0 = party id, reg1 = numstacks, reg2 = banner, reg3 = morale (70, native's neutral courage point, when the roster has none).
   ("coop_battle_dict_read_roster_party",
     [
       (store_script_param, ":rd_dict", 1),
@@ -6856,10 +6884,12 @@ coop_scripts = [
         (dict_get_int, reg0, ":rd_dict", "@p_enemy{reg20}_partyid"),
         (dict_get_int, reg1, ":rd_dict", "@p_enemy{reg20}_numstacks"),
         (dict_get_int, reg2, ":rd_dict", "@p_enemy{reg20}_banner"),
+        (dict_get_int, reg3, ":rd_dict", "@p_enemy{reg20}_morale", 70),
       (else_try),
         (dict_get_int, reg0, ":rd_dict", "@p_ally{reg20}_partyid"),
         (dict_get_int, reg1, ":rd_dict", "@p_ally{reg20}_numstacks"),
         (dict_get_int, reg2, ":rd_dict", "@p_ally{reg20}_banner"),
+        (dict_get_int, reg3, ":rd_dict", "@p_ally{reg20}_morale", 70),
       (try_end),
     ]),
 
@@ -7419,15 +7449,20 @@ coop_scripts = [
         (player_get_troop_id, ":troop_no", ":my_player"),
         (try_begin),
             (eq, ":slot", -1),
-            # Clear signal: wipe all bag slots to remove stale data.
-            # The snap mirror is wiped in lockstep so the close-diff
-            # baseline tracks exactly what the server pushed.
+            # Clear signal: wipe the bag slots the per-slot pushes below
+            # would mirror. A slot the player edited in an open window keeps
+            # both its live state and its snapshot: the snapshot is the
+            # pre-edit baseline that lets the per-slot arm refuse the server's
+            # copy of that slot and lets the close diff report the edit.
             (try_for_range, ":bag_slot", 10, 106),
-                (troop_set_inventory_slot, ":troop_no", ":bag_slot", -1),
                 (store_sub, ":offset", ":bag_slot", 10),
                 (store_add, ":snap_item_slot", slot_coop_inv_snap_bag_item_begin, ":offset"),
-                (troop_set_slot, "trp_temp_troop", ":snap_item_slot", -1),
                 (store_add, ":snap_mod_slot", slot_coop_inv_snap_bag_mod_begin, ":offset"),
+                (call_script, "script_coop_inv_recv_mirror_ok", ":troop_no", ":bag_slot", ":snap_item_slot", ":snap_mod_slot"),
+                (assign, ":mirror_ok", reg0),
+                (eq, ":mirror_ok", 1),
+                (troop_set_inventory_slot, ":troop_no", ":bag_slot", -1),
+                (troop_set_slot, "trp_temp_troop", ":snap_item_slot", -1),
                 (troop_set_slot, "trp_temp_troop", ":snap_mod_slot", 0),
             (try_end),
         (else_try),
@@ -7448,6 +7483,27 @@ coop_scripts = [
         (assign, "$g_coop_inv_sync_ready", 1),
         # Baseline fully mirrored from server pushes -- close diff may run.
         (assign, "$g_coop_inv_snap_ready", 1),
+      (else_try),
+        (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_inv_slot_amount),  # 66
+        (store_script_param, ":slot", 2),
+        (store_script_param, ":amount", 3),
+        (multiplayer_get_my_player, ":my_player"),
+        (player_get_troop_id, ":troop_no", ":my_player"),
+        (try_begin),
+            (lt, ":slot", 10),
+            (store_add, ":snap_item_slot", slot_coop_inv_snap_equip_item_begin, ":slot"),
+        (else_try),
+            (store_sub, ":offset", ":slot", 10),
+            (store_add, ":snap_item_slot", slot_coop_inv_snap_bag_item_begin, ":offset"),
+        (try_end),
+        # The amount belongs to the item this slot's ev 15 / ev 25 just recorded;
+        # a slot edited in an open window keeps its local state.
+        (troop_get_slot, ":snap_item", "trp_temp_troop", ":snap_item_slot"),
+        (troop_get_inventory_slot, ":live_item", ":troop_no", ":slot"),
+        (try_begin),
+            (eq, ":live_item", ":snap_item"),
+            (troop_inventory_slot_set_item_amount, ":troop_no", ":slot", ":amount"),
+        (try_end),
       (else_try),
         (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_center_trade_price),  # 29
         (store_script_param, ":item_offset", 2),
@@ -7723,11 +7779,9 @@ coop_scripts = [
         (store_troop_gold, ":cg", ":troop_no"),
         (try_begin), (gt, ":cg", 0), (troop_remove_gold, ":troop_no", ":cg"), (try_end),
         (try_begin), (gt, ":new_gold", 0), (troop_add_gold, ":troop_no", ":new_gold"), (try_end),
-        # Add troops to client party
-        (player_get_party_id, ":my_party", ":my_player"),
+        # The recruits reach the client's party through roster replication.
         (try_begin),
             (gt, ":count", 0),
-            (party_add_members, ":my_party", "$g_coop_recruit_troop", ":count"),
             (assign, reg1, ":count"),
             (str_store_troop_name, s1, "$g_coop_recruit_troop"),
             (display_message, "@Recruited {reg1} {s1}.", 0xFF44FF44),
@@ -7750,6 +7804,10 @@ coop_scripts = [
       (party_clear, "p_coop_local_player_cas"),
       (party_clear, "p_coop_local_enemy_cas"),
       (assign, "$g_coop_local_cas_recording", 1),
+      (call_script, "script_coop_my_party"),
+      (call_script, "script_party_count_members_with_full_health", reg0),
+      (assign, "$g_coop_local_fit_start", reg0),
+      (assign, "$g_coop_local_allies_fallen", 0),
       (assign, "$g_battle_result", 0),
       (assign, "$g_engaged_enemy", 1),
       (assign, "$g_encountered_party", "$g_coop_center_party"),
@@ -8083,6 +8141,14 @@ coop_scripts = [
            (troop_get_inventory_slot_modifier, ":imod", ":troop_no", ":slot"),
            (dict_set_int, "$coop_char_dict", s12, ":item"),
            (dict_set_int, "$coop_char_dict", s13, ":imod"),
+           (try_begin),
+               (gt, ":item", 0),
+               (troop_inventory_slot_get_item_max_amount, ":amt_max", ":troop_no", ":slot"),
+               (gt, ":amt_max", 1),
+               (troop_inventory_slot_get_item_amount, ":amt", ":troop_no", ":slot"),
+               (str_store_string, s12, "@char_itm_amt_{reg0}"),
+               (dict_set_int, "$coop_char_dict", s12, ":amt"),
+           (try_end),
        (try_end),
 
        # Bag inventory (slots 10-105)
@@ -8097,12 +8163,17 @@ coop_scripts = [
                (str_store_string, s13, "@char_bag_mod_{reg0}"),
                (dict_set_int, "$coop_char_dict", s12, ":item"),
                (dict_set_int, "$coop_char_dict", s13, ":imod"),
+               (troop_inventory_slot_get_item_max_amount, ":amt_max", ":troop_no", ":slot"),
+               (gt, ":amt_max", 1),
+               (troop_inventory_slot_get_item_amount, ":amt", ":troop_no", ":slot"),
+               (str_store_string, s12, "@char_bag_amt_{reg0}"),
+               (dict_set_int, "$coop_char_dict", s12, ":amt"),
            (try_end),
        (try_end),
 
        # Map position -- use explicit multiplier so load can match
        (try_begin),
-           (party_is_active, ":party_no"),
+           (gt, ":party_no", 0),
            (set_fixed_point_multiplier, 1),
            (party_get_position, pos1, ":party_no"),
            (position_get_x, ":pos_x", pos1),
@@ -8118,7 +8189,7 @@ coop_scripts = [
 
        # Banner
        (try_begin),
-           (party_is_active, ":party_no"),
+           (gt, ":party_no", 0),
            (party_get_banner_icon, ":banner", ":party_no"),
            (dict_set_int, "$coop_char_dict", "@char_banner", ":banner"),
        (try_end),
@@ -8127,12 +8198,19 @@ coop_scripts = [
        (troop_get_slot, ":renown", ":troop_no", slot_troop_renown),
        (dict_set_int, "$coop_char_dict", "@char_renown", ":renown"),
 
+       # Party morale (party_morale): the live party is the truth.
+       (try_begin),
+           (gt, ":party_no", 0),
+           (party_get_morale, ":morale", ":party_no"),
+           (dict_set_int, "$coop_char_dict", "@char_party_morale", ":morale"),
+       (try_end),
+
        # Party troop stacks. Player troops are excluded (the join flow
        # re-binds them); everything else -- including companion heroes --
        # must be saved, because the load rebuild is party_clear +
        # re-add-from-dict and anything skipped here is lost on rejoin.
        (try_begin),
-           (party_is_active, ":party_no"),
+           (gt, ":party_no", 0),
            (party_get_num_companion_stacks, ":num_stacks", ":party_no"),
            (assign, reg1, ":num_stacks"),
            (assign, reg2, ":party_no"),
@@ -8181,7 +8259,7 @@ coop_scripts = [
        # Party prisoner stacks (regulars + captured lords). The load rebuild
        # is clear + re-add-from-dict, so anything skipped here is lost.
        (try_begin),
-           (party_is_active, ":party_no"),
+           (gt, ":party_no", 0),
            (party_get_num_prisoner_stacks, ":num_pstacks", ":party_no"),
            (assign, ":psave_idx", 0),
            (try_for_range, ":i", 0, ":num_pstacks"),
@@ -8262,6 +8340,34 @@ coop_scripts = [
            (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_wage_held"),
            (dict_set_int, "$coop_char_dict", "@char_wage_held", ":pv"),
        (try_end),
+       (try_begin),
+           (dict_has_key, "$coop_char_preserve_dict", "@char_morale_hours"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_morale_hours"),
+           (dict_set_int, "$coop_char_dict", "@char_morale_hours", ":pv"),
+       (try_end),
+       (try_begin),
+           (dict_has_key, "$coop_char_preserve_dict", "@char_food_hours"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_food_hours"),
+           (dict_set_int, "$coop_char_dict", "@char_food_hours", ":pv"),
+       (try_end),
+       (try_begin),
+           (dict_has_key, "$coop_char_preserve_dict", "@char_spoil_hours"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_spoil_hours"),
+           (dict_set_int, "$coop_char_dict", "@char_spoil_hours", ":pv"),
+       (try_end),
+       (try_begin),
+           (dict_has_key, "$coop_char_preserve_dict", "@char_captor"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_captor"),
+           (dict_set_int, "$coop_char_dict", "@char_captor", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_captor_template"),
+           (dict_set_int, "$coop_char_dict", "@char_captor_template", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_captive_kind"),
+           (dict_set_int, "$coop_char_dict", "@char_captive_kind", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_captive_until"),
+           (dict_set_int, "$coop_char_dict", "@char_captive_until", ":pv"),
+           (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_captive_ransom"),
+           (dict_set_int, "$coop_char_dict", "@char_captive_ransom", ":pv"),
+       (try_end),
        (try_for_range, reg22, mayor_quests_begin, village_elder_quests_end),
            (dict_has_key, "$coop_char_preserve_dict", "@char_quest_{reg22}_status"),
            (dict_get_int, ":pv", "$coop_char_preserve_dict", "@char_quest_{reg22}_status"),
@@ -8338,23 +8444,8 @@ coop_scripts = [
 
        (try_begin),
            (neg|dict_has_key, "$coop_char_dict", "@char_level"),
-           # No save file -- starter party
+           # No save file: the player goes through character creation.
            (dict_free, "$coop_char_dict"),
-           (try_begin),
-               (party_is_active, ":party_no"),
-               (party_add_members, ":party_no", "trp_nord_recruit", 30),
-               # Starter companion hero -- one per player slot so two players
-               # never share the same unique NPC (heroes are wounded, never
-               # removed, by the casualty core). Persisted like any other
-               # stack once the char dict is first saved.
-               (store_mod, ":npc_offset", ":player_no", 16),
-               (store_add, ":companion", "trp_npc1", ":npc_offset"),
-               (party_add_members, ":party_no", ":companion", 1),
-               # Starting gold -- zero first, then set
-               (store_troop_gold, ":cg", ":troop_no"),
-               (try_begin), (gt, ":cg", 0), (troop_remove_gold, ":troop_no", ":cg"), (try_end),
-               (troop_add_gold, ":troop_no", 10000),
-           (try_end),
            (assign, reg0, 0),
        (else_try),
            # Apply saved data to troop
@@ -8481,6 +8572,12 @@ coop_scripts = [
                        (is_between, ":item", 1, coop_new_items_end),
                        (troop_set_inventory_slot, ":troop_no", ":slot", ":item"),
                        (troop_set_inventory_slot_modifier, ":troop_no", ":slot", ":imod"),
+                       (str_store_string, s12, "@char_itm_amt_{reg0}"),
+                       (try_begin),
+                           (dict_has_key, "$coop_char_dict", s12),
+                           (dict_get_int, ":amt", "$coop_char_dict", s12),
+                           (troop_inventory_slot_set_item_amount, ":troop_no", ":slot", ":amt"),
+                       (try_end),
                    (else_try),
                        (troop_set_inventory_slot, ":troop_no", ":slot", -1),
                    (try_end),
@@ -8502,6 +8599,12 @@ coop_scripts = [
                    (dict_get_int, ":imod", "$coop_char_dict", s13),
                    (troop_set_inventory_slot, ":troop_no", ":slot", ":item"),
                    (troop_set_inventory_slot_modifier, ":troop_no", ":slot", ":imod"),
+                   (str_store_string, s12, "@char_bag_amt_{reg0}"),
+                   (try_begin),
+                       (dict_has_key, "$coop_char_dict", s12),
+                       (dict_get_int, ":amt", "$coop_char_dict", s12),
+                       (troop_inventory_slot_set_item_amount, ":troop_no", ":slot", ":amt"),
+                   (try_end),
                (else_try),
                    (troop_set_inventory_slot, ":troop_no", ":slot", -1),
                (try_end),
@@ -8618,6 +8721,14 @@ coop_scripts = [
                (try_end),
            (try_end),
 
+           # Party morale after the rebuild; a character saved before morale
+           # existed starts at native's 100.
+           (try_begin),
+               (party_is_active, ":party_no"),
+               (dict_get_int, ":morale", "$coop_char_dict", "@char_party_morale", 100),
+               (party_set_morale, ":party_no", ":morale"),
+           (try_end),
+
            # Renown
            (try_begin),
                (dict_has_key, "$coop_char_dict", "@char_renown"),
@@ -8732,6 +8843,39 @@ coop_scripts = [
 
        (player_get_troop_id, ":troop_no", ":player_no"),
 
+       (player_get_party_id, ":party_no", ":player_no"),
+
+       # Native creates the character from a fresh troop. The troop and
+       # party are fixed per player index and still hold whatever the
+       # previous character on this slot had (same reason
+       # coop_load_character resets every slot and the gold), so the
+       # inventory, gold, party, skills, proficiencies (the template's
+       # wp(15)), XP and renown go back to the template's before the
+       # background raises below.
+       (try_for_range, ":slot", 0, 106),
+           (troop_set_inventory_slot, ":troop_no", ":slot", -1),
+       (try_end),
+       (store_troop_gold, ":old_gold", ":troop_no"),
+       (try_begin),
+           (gt, ":old_gold", 0),
+           (troop_remove_gold, ":troop_no", ":old_gold"),
+       (try_end),
+       (party_clear, ":party_no"),
+       (call_script, "script_coop_set_party_morale", ":player_no", 100, coop_morale_reason_sync),
+       (try_for_range, ":skl", 0, num_coop_skills),
+           (troop_set_skill, ":troop_no", ":skl", 0),
+       (try_end),
+       (try_for_range, ":wp", wpt_one_handed_weapon, wpt_firearm),
+           (troop_set_proficiency, ":troop_no", ":wp", 15),
+       (try_end),
+       (troop_set_proficiency, ":troop_no", wpt_firearm, 0),
+       # The engine cannot lower XP; the plugin writes it (and the level)
+       # after this frame, and the save and char sync read the queued value.
+       (assign, "$g_coop_set_xp_troop", ":troop_no"),
+       (assign, "$g_coop_set_xp_value", 0),
+       (assign, "$g_coop_set_xp_go", 1),
+       (troop_set_slot, ":troop_no", slot_troop_renown, 0),
+
        # Set gender
        (troop_set_type, ":troop_no", ":gender"),
 
@@ -8782,6 +8926,8 @@ coop_scripts = [
                (troop_raise_skill, ":troop_no", skl_leadership, 1),
                (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 20),
            (try_end),
+           (troop_add_item, ":troop_no", "itm_tab_shield_round_a", imod_battered),
+           (troop_add_gold, ":troop_no", 100),
        (else_try),
            (eq, ":father", cb_merchant),
            (troop_raise_attribute, ":troop_no", ca_intelligence, 2),
@@ -8791,6 +8937,7 @@ coop_scripts = [
            (troop_raise_skill, ":troop_no", skl_trade, 2),
            (troop_raise_skill, ":troop_no", skl_inventory_management, 1),
            (troop_raise_proficiency, ":troop_no", wpt_two_handed_weapon, 10),
+           (troop_add_gold, ":troop_no", 250),
        (else_try),
            (eq, ":father", cb_guard),
            (troop_raise_attribute, ":troop_no", ca_strength, 1),
@@ -8805,6 +8952,8 @@ coop_scripts = [
            (troop_raise_proficiency, ":troop_no", wpt_two_handed_weapon, 15),
            (troop_raise_proficiency, ":troop_no", wpt_polearm, 20),
            (troop_raise_proficiency, ":troop_no", wpt_throwing, 10),
+           (troop_add_item, ":troop_no", "itm_tab_shield_kite_b", imod_battered),
+           (troop_add_gold, ":troop_no", 50),
        (else_try),
            (eq, ":father", cb_forester),
            (troop_raise_attribute, ":troop_no", ca_strength, 1),
@@ -8816,6 +8965,7 @@ coop_scripts = [
            (troop_raise_skill, ":troop_no", skl_athletics, 1),
            (troop_raise_proficiency, ":troop_no", wpt_two_handed_weapon, 10),
            (troop_raise_proficiency, ":troop_no", wpt_archery, 30),
+           (troop_add_gold, ":troop_no", 30),
        (else_try),
            (eq, ":father", cb_nomad),
            (troop_raise_attribute, ":troop_no", ca_strength, 1),
@@ -8828,15 +8978,18 @@ coop_scripts = [
                (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 10),
                (troop_raise_proficiency, ":troop_no", wpt_archery, 30),
                (troop_raise_proficiency, ":troop_no", wpt_throwing, 10),
+               (troop_add_gold, ":troop_no", 15),
            (else_try),
                (troop_raise_skill, ":troop_no", skl_wound_treatment, 1),
                (troop_raise_skill, ":troop_no", skl_first_aid, 1),
                (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 5),
                (troop_raise_proficiency, ":troop_no", wpt_archery, 20),
                (troop_raise_proficiency, ":troop_no", wpt_throwing, 5),
+               (troop_add_gold, ":troop_no", 20),
            (try_end),
            (troop_raise_skill, ":troop_no", skl_pathfinding, 1),
            (troop_raise_skill, ":troop_no", skl_riding, 2),
+           (troop_add_item, ":troop_no", "itm_tab_shield_small_round_a", imod_battered),
        (else_try),
            (eq, ":father", cb_thief),
            (troop_raise_attribute, ":troop_no", ca_agility, 3),
@@ -8846,6 +8999,8 @@ coop_scripts = [
            (troop_raise_skill, ":troop_no", skl_looting, 1),
            (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 20),
            (troop_raise_proficiency, ":troop_no", wpt_throwing, 20),
+           (troop_add_item, ":troop_no", "itm_throwing_knives", 0),
+           (troop_add_gold, ":troop_no", 25),
        (try_end),
 
        # --- Early life ---
@@ -8904,11 +9059,14 @@ coop_scripts = [
                (troop_raise_proficiency, ":troop_no", wpt_archery, 10),
                (troop_raise_proficiency, ":troop_no", wpt_crossbow, 10),
                (troop_raise_proficiency, ":troop_no", wpt_throwing, 10),
-               (troop_set_inventory_slot, ":troop_no", ek_body, "itm_leather_jerkin"),
-               (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_hide_boots"),
-               (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_sword_medieval_a"),
-               (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_crossbow"),
-               (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_bolts"),
+               (troop_add_gold, ":troop_no", 20),
+               (troop_add_item, ":troop_no", "itm_leather_jerkin", imod_ragged),
+               (troop_add_item, ":troop_no", "itm_leather_boots", imod_tattered),
+               (troop_add_item, ":troop_no", "itm_sword_medieval_a", imod_rusty),
+               (troop_add_item, ":troop_no", "itm_hunting_crossbow", 0),
+               (troop_add_item, ":troop_no", "itm_bolts", 0),
+               (troop_add_item, ":troop_no", "itm_saddle_horse", imod_swaybacked),
+               (troop_add_item, ":troop_no", "itm_smoked_fish", 0),
            (else_try),
                (eq, ":adulthood", 1), # troubadour
                (call_script, "script_coop_apply_adulthood_troubadour", ":troop_no"),
@@ -8935,11 +9093,14 @@ coop_scripts = [
                (troop_raise_skill, ":troop_no", skl_wound_treatment, 1),
                (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 10),
                (troop_raise_proficiency, ":troop_no", wpt_crossbow, 15),
-               (troop_set_inventory_slot, ":troop_no", ek_head, "itm_woolen_hood"),
-               (troop_set_inventory_slot, ":troop_no", ek_body, "itm_woolen_dress"),
-               (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_dagger"),
-               (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_crossbow"),
-               (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_bolts"),
+               (troop_add_item, ":troop_no", "itm_dagger", 0),
+               (troop_add_item, ":troop_no", "itm_hunting_crossbow", 0),
+               (troop_add_item, ":troop_no", "itm_bolts", 0),
+               (troop_add_item, ":troop_no", "itm_courser", imod_spirited),
+               (troop_add_item, ":troop_no", "itm_woolen_hood", imod_sturdy),
+               (troop_add_item, ":troop_no", "itm_woolen_dress", imod_sturdy),
+               (troop_add_gold, ":troop_no", 100),
+               (troop_add_item, ":troop_no", "itm_smoked_fish", 0),
            (else_try),
                (eq, ":adulthood", 1), # troubadour
                (call_script, "script_coop_apply_adulthood_troubadour", ":troop_no"),
@@ -8983,24 +9144,13 @@ coop_scripts = [
            (troop_raise_skill, ":troop_no", skl_looting, 1),
        (try_end),
 
-       # Default starting equipment
-       (troop_set_inventory_slot, ":troop_no", ek_body, "itm_leather_jerkin"),
-       (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_hide_boots"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_sword_medieval_a"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_hunting_bow"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_arrows"),
+       # The kit was added to the bag like native's; wear and wield it.
+       (troop_equip_items, ":troop_no"),
 
        # Set starting unspent points
        (troop_set_attribute_points, ":troop_no", 4),
        (troop_set_skill_points, ":troop_no", 2),
        (troop_set_proficiency_points, ":troop_no", 60),
-
-       # Starter party troops (added via coop_load_character no-save path)
-       (player_get_party_id, ":party_no", ":player_no"),
-
-       # TEST/DEBUG: give a stack of Nord Huscarls (trp_nord_champion) so
-       # sieges can be tested with a real attacking force. Remove before release.
-       (party_add_members, ":party_no", "trp_nord_champion", 100),
 
        (display_message, "@Character creation complete."),
    ]),
@@ -9016,11 +9166,14 @@ coop_scripts = [
        (troop_raise_skill, ":troop_no", skl_pathfinding, 1),
        (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 25),
        (troop_raise_proficiency, ":troop_no", wpt_crossbow, 10),
-       (troop_set_inventory_slot, ":troop_no", ek_body, "itm_tabard"),
-       (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_hide_boots"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_sword_medieval_a"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_crossbow"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_bolts"),
+       (troop_add_gold, ":troop_no", 80),
+       (troop_add_item, ":troop_no", "itm_tabard", imod_sturdy),
+       (troop_add_item, ":troop_no", "itm_leather_boots", imod_ragged),
+       (troop_add_item, ":troop_no", "itm_sword_medieval_a", imod_rusty),
+       (troop_add_item, ":troop_no", "itm_hunting_crossbow", 0),
+       (troop_add_item, ":troop_no", "itm_bolts", 0),
+       (troop_add_item, ":troop_no", "itm_saddle_horse", imod_swaybacked),
+       (troop_add_item, ":troop_no", "itm_smoked_fish", 0),
    ]),
 
    ("coop_apply_adulthood_student",
@@ -9033,11 +9186,16 @@ coop_scripts = [
        (troop_raise_skill, ":troop_no", skl_persuasion, 1),
        (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 20),
        (troop_raise_proficiency, ":troop_no", wpt_crossbow, 20),
-       (troop_set_inventory_slot, ":troop_no", ek_body, "itm_linen_tunic"),
-       (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_woolen_hose"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_sword_medieval_a"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_crossbow"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_bolts"),
+       (troop_add_gold, ":troop_no", 80),
+       (troop_add_item, ":troop_no", "itm_linen_tunic", imod_sturdy),
+       (troop_add_item, ":troop_no", "itm_woolen_hose", 0),
+       (troop_add_item, ":troop_no", "itm_sword_medieval_a", imod_rusty),
+       (troop_add_item, ":troop_no", "itm_hunting_crossbow", 0),
+       (troop_add_item, ":troop_no", "itm_bolts", 0),
+       (troop_add_item, ":troop_no", "itm_saddle_horse", imod_swaybacked),
+       (troop_add_item, ":troop_no", "itm_smoked_fish", 0),
+       (store_random_in_range, ":book_no", books_begin, books_end),
+       (troop_add_item, ":troop_no", ":book_no", 0),
    ]),
 
    ("coop_apply_adulthood_peddler",
@@ -9050,13 +9208,21 @@ coop_scripts = [
        (troop_raise_skill, ":troop_no", skl_pathfinding, 1),
        (troop_raise_skill, ":troop_no", skl_inventory_management, 1),
        (troop_raise_proficiency, ":troop_no", wpt_polearm, 15),
-       (troop_set_inventory_slot, ":troop_no", ek_body, "itm_leather_jacket"),
-       (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_hide_boots"),
-       (troop_set_inventory_slot, ":troop_no", ek_head, "itm_fur_hat"),
-       (troop_set_inventory_slot, ":troop_no", ek_gloves, "itm_leather_gloves"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_staff"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_crossbow"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_bolts"),
+       (troop_add_item, ":troop_no", "itm_leather_gloves", imod_plain),
+       (troop_add_gold, ":troop_no", 90),
+       (troop_add_item, ":troop_no", "itm_leather_jacket", 0),
+       (troop_add_item, ":troop_no", "itm_leather_boots", imod_ragged),
+       (troop_add_item, ":troop_no", "itm_fur_hat", 0),
+       (troop_add_item, ":troop_no", "itm_staff", 0),
+       (troop_add_item, ":troop_no", "itm_hunting_crossbow", 0),
+       (troop_add_item, ":troop_no", "itm_bolts", 0),
+       (troop_add_item, ":troop_no", "itm_saddle_horse", 0),
+       (troop_add_item, ":troop_no", "itm_sumpter_horse", 0),
+       (troop_add_item, ":troop_no", "itm_linen", 0),
+       (troop_add_item, ":troop_no", "itm_pottery", 0),
+       (troop_add_item, ":troop_no", "itm_wool", 0),
+       (troop_add_item, ":troop_no", "itm_wool", 0),
+       (troop_add_item, ":troop_no", "itm_smoked_fish", 0),
    ]),
 
    ("coop_apply_adulthood_craftsman",
@@ -9069,11 +9235,15 @@ coop_scripts = [
        (troop_raise_skill, ":troop_no", skl_tactics, 1),
        (troop_raise_skill, ":troop_no", skl_trade, 1),
        (troop_raise_proficiency, ":troop_no", wpt_one_handed_weapon, 15),
-       (troop_set_inventory_slot, ":troop_no", ek_body, "itm_coarse_tunic"),
-       (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_hide_boots"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_sword_medieval_b_small"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_crossbow"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_bolts"),
+       (troop_add_gold, ":troop_no", 100),
+       (troop_add_item, ":troop_no", "itm_leather_boots", imod_ragged),
+       (troop_add_item, ":troop_no", "itm_coarse_tunic", 0),
+       (troop_add_item, ":troop_no", "itm_sword_medieval_b", imod_balanced),
+       (troop_add_item, ":troop_no", "itm_hunting_crossbow", 0),
+       (troop_add_item, ":troop_no", "itm_bolts", 0),
+       (troop_add_item, ":troop_no", "itm_tools", 0),
+       (troop_add_item, ":troop_no", "itm_saddle_horse", 0),
+       (troop_add_item, ":troop_no", "itm_smoked_fish", 0),
    ]),
 
    ("coop_apply_adulthood_poacher",
@@ -9087,11 +9257,17 @@ coop_scripts = [
        (troop_raise_skill, ":troop_no", skl_athletics, 1),
        (troop_raise_proficiency, ":troop_no", wpt_polearm, 10),
        (troop_raise_proficiency, ":troop_no", wpt_archery, 35),
-       (troop_set_inventory_slot, ":troop_no", ek_body, "itm_rawhide_coat"),
-       (troop_set_inventory_slot, ":troop_no", ek_foot, "itm_hide_boots"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_0, "itm_hatchet"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_1, "itm_hunting_bow"),
-       (troop_set_inventory_slot, ":troop_no", ek_item_2, "itm_barbed_arrows"),
+       (troop_add_gold, ":troop_no", 10),
+       (troop_add_item, ":troop_no", "itm_axe", imod_chipped),
+       (troop_add_item, ":troop_no", "itm_rawhide_coat", 0),
+       (troop_add_item, ":troop_no", "itm_hide_boots", 0),
+       (troop_add_item, ":troop_no", "itm_hunting_bow", 0),
+       (troop_add_item, ":troop_no", "itm_barbed_arrows", 0),
+       (troop_add_item, ":troop_no", "itm_sumpter_horse", imod_heavy),
+       (troop_add_item, ":troop_no", "itm_dried_meat", 0),
+       (troop_add_item, ":troop_no", "itm_dried_meat", 0),
+       (troop_add_item, ":troop_no", "itm_furs", 0),
+       (troop_add_item, ":troop_no", "itm_furs", 0),
    ]),
 
   ("coop_creation_show_step",
@@ -9445,7 +9621,7 @@ coop_scripts = [
    [
        (store_script_param, ":player_no", 1),
        (player_get_party_id, ":party_no", ":player_no"),
-       (party_is_active, ":party_no"),
+       (gt, ":party_no", 0),
        (set_fixed_point_multiplier, 1000),
        (party_get_position, pos1, ":party_no"),
        (position_get_x, ":x", pos1),
@@ -9455,9 +9631,9 @@ coop_scripts = [
    ]),
 
   # Client: the authoritative position has landed. Move the local copy
-  # (the replication row that follows writes the same value), snap the
-  # camera, stop the pre-hydrate pin in module_simple_triggers.py and
-  # refresh the client-side camera cache.
+  # (the replication row that follows writes the same value), stop the
+  # pre-hydrate pin in module_simple_triggers.py; a free player also snaps
+  # the camera and refreshes the cache (a captive's camera is on the captor).
   ("coop_client_recv_own_party_position",
    [
        (store_script_param, ":x", 1),
@@ -9469,9 +9645,28 @@ coop_scripts = [
        (position_set_x, pos1, ":x"),
        (position_set_y, pos1, ":y"),
        (party_set_position, ":my_party", pos1),
-       (set_camera_follow_party, ":my_party", 1),
        (assign, "$g_coop_camera_landed", 1),
-       (call_script, "script_coop_client_camera_cache_save", ":x", ":y"),
+       (try_begin),
+           (neq, "$g_coop_captive", 1),
+           (call_script, "script_coop_client_camera_follow"),
+           (call_script, "script_coop_client_camera_cache_save", ":x", ":y"),
+       (try_end),
+   ]),
+
+  # Client: the one place the map camera is aimed -- the captor's party
+  # while captive (once this client has spawned it), else the own party.
+  # Every menu close runs the map-switch trigger, so a target chosen
+  # anywhere else is overridden by the next one.
+  ("coop_client_camera_follow",
+   [
+       (multiplayer_get_my_player, ":my_player"),
+       (store_add, ":target", multiplayer_campaign_player_parties_begin, ":my_player"),
+       (try_begin),
+           (eq, "$g_coop_captive", 1),
+           (party_is_active, "$g_coop_captor_party"),
+           (assign, ":target", "$g_coop_captor_party"),
+       (try_end),
+       (set_camera_follow_party, ":target", 1),
    ]),
 
   # Client: remember where the own party is, so the next join can open the
@@ -9517,6 +9712,17 @@ coop_scripts = [
            (player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_ready),
        (else_try),
            (player_set_slot, ":player_no", slot_player_coop_char_state, coop_char_state_creation),
+       (try_end),
+
+       # Before any captivity push: ev 60 snaps the client camera to the
+       # own party, the captivity push re-aims it at the captor.
+       (call_script, "script_coop_send_own_party_position", ":player_no"),
+
+       # Player slots are wiped per connection: restore a captive's record
+       # before any battle result lands.
+       (try_begin),
+           (eq, ":char_loaded", 1),
+           (call_script, "script_coop_captivity_hydrate", ":player_no"),
        (try_end),
 
        # Apply results for every slot with a pending or ended battle --
@@ -9662,8 +9868,12 @@ coop_scripts = [
        # troop_set_inventory_slot by getNumInventorySlots()+10 (skill-derived,
        # 30+6*IM+10), so bag slots above the IM-0 cap are silently dropped
        # if they arrive before the skill push raises the client troop's IM.
-       (call_script, "script_coop_send_own_party_position", ":player_no"),
        (call_script, "script_coop_send_char_sync_to_client", ":player_no"),
+       (try_begin),
+           (player_get_party_id, ":morale_party", ":player_no"),
+           (party_get_morale, ":morale", ":morale_party"),
+           (call_script, "script_coop_set_party_morale", ":player_no", ":morale", coop_morale_reason_sync),
+       (try_end),
        (call_script, "script_coop_relation_push_all", ":player_no"),
        (call_script, "script_coop_reputation_push", ":player_no"),
        (call_script, "script_coop_quest_hydrate", ":player_no"),
@@ -9829,6 +10039,13 @@ coop_scripts = [
 		(call_script, "script_coop_save_character", ":player_no"),
 		(call_script, "script_coop_center_lock_release", ":player_no"),
 		(call_script, "script_coop_quest_unstamp_player", ":player_no"),
+		# The party belongs to the player index, not the account: whatever
+		# it is attached to must not carry over to the next player.
+		(store_add, ":own_party", multiplayer_campaign_player_parties_begin, ":player_no"),
+		(try_begin),
+			(party_is_active, ":own_party"),
+			(party_detach, ":own_party"),
+		(try_end),
 		(try_begin),
 			(party_is_active, ":party_no"),
 			(disable_party, ":party_no"),
@@ -9857,27 +10074,399 @@ coop_scripts = [
 		(try_end),
 	]),
 
+	# clear_party_group reaches a player party only when it rides attached
+	# under a beaten AI party (a player visiting a center).
 	("multiplayer_campaign_player_party_defeated",
 	[
 		(store_script_param, ":party_no", 1),
+		(try_begin),
+			(is_between, ":party_no", multiplayer_campaign_player_parties_begin, multiplayer_campaign_player_parties_end),
+			(store_sub, ":player_no", ":party_no", multiplayer_campaign_player_parties_begin),
+			(player_is_active, ":player_no"),
+			(call_script, "script_coop_broadcast_player_defeated", ":player_no", 0),
+		(try_end),
+	]),
 
-		(assign, ":max_dist", 0),
-		(party_get_position, pos1, ":party_no"),
-		(try_for_range, ":unused", 0, 10),
-			(map_get_random_position_around_position, pos0, pos1, 10),
-			(get_distance_between_positions, ":dist", pos0, pos1),
-			(ge, ":dist", ":max_dist"),
-			(assign, ":max_dist", ":dist"),
-			(copy_position, pos2, pos0),
-		(try_end),  
+	# Sole writer of the captivity record: five char-dict keys (authoritative,
+	# Coop Rule 2) and their player-slot mirror. captor 0 clears everything.
+	("coop_captivity_record_set", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":captor", 2),
+		(store_script_param, ":kind", 3),
+		(store_script_param, ":until", 4),
+		(store_script_param, ":ransom", 5),
+		(assign, ":template", 0),
+		(try_begin),
+			(gt, ":captor", 0),
+			(party_get_template_id, ":template", ":captor"),
+		(else_try),
+			(assign, ":kind", 0),
+			(assign, ":until", 0),
+			(assign, ":ransom", 0),
+		(try_end),
+		(player_set_slot, ":player_no", slot_player_coop_captor, ":captor"),
+		(player_set_slot, ":player_no", slot_player_coop_captive_kind, ":kind"),
+		(player_set_slot, ":player_no", slot_player_coop_captive_until, ":until"),
+		(player_set_slot, ":player_no", slot_player_coop_captive_ransom, ":ransom"),
+		(call_script, "script_coop_quest_dict_load", ":player_no"),
+		(try_begin),
+			(eq, reg0, 1),
+			(dict_set_int, "$coop_quest_dict", "@char_captor", ":captor"),
+			(dict_set_int, "$coop_quest_dict", "@char_captor_template", ":template"),
+			(dict_set_int, "$coop_quest_dict", "@char_captive_kind", ":kind"),
+			(dict_set_int, "$coop_quest_dict", "@char_captive_until", ":until"),
+			(dict_set_int, "$coop_quest_dict", "@char_captive_ransom", ":ransom"),
+			(call_script, "script_coop_quest_dict_save", ":player_no"),
+		(try_end),
+	]),
 
-		(party_set_position, ":party_no", pos2),
-		
-		(party_get_player_id, ":player_no", ":party_no"),
-		(multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_camera_follow_party, ":party_no"),
-		
+	("cf_coop_player_is_captive", [
+		(store_script_param, ":player_no", 1),
+		(player_slot_ge, ":player_no", slot_player_coop_captor, 1),
+	]),
+
+	# A captive can only answer the ransom offer and keep its screens in
+	# sync; every world action from it is dropped (Coop Rule 3).
+	("cf_coop_captive_refuses_event", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":event_type", 2),
+		(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_start_battle),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_start_local_fight),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_leave_center),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_request_trade),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_trade_change),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_trade_done),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_request_recruit),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_start_local_visit),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_request_siege),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_request_siege_local),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_tavern_hire_mercenary),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_tavern_recruit_companion),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_tavern_ransom_companion),
+		(this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_quest_pay_ransom),
+		(eq, ":event_type", multiplayer_event_multiplayer_campaign_debug_teleport),
+	]),
+
+	# ch125 64 + the camera: on the captor while captive, back on the own
+	# party once free.
+	("coop_captivity_push_state", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":state", 2),
+		(player_get_slot, ":captor", ":player_no", slot_player_coop_captor),
+		(player_get_slot, ":ransom", ":player_no", slot_player_coop_captive_ransom),
+		(multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+			multiplayer_event_multiplayer_campaign_server_event_captivity_state, ":captor", ":state", ":ransom"),
+	]),
+
+	# ch125 7 to everyone: "<player> was taken prisoner by <captor>", or the
+	# escaped text for captor 0.
+	("coop_broadcast_player_defeated", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":captor", 2),
 		(try_for_players, ":current_player_no", 1),
-			(multiplayer_send_2_int_to_player, ":current_player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_player_party_defeated, ":player_no"),
+			(multiplayer_send_3_int_to_player, ":current_player_no", multiplayer_event_multiplayer_campaign_server_events,
+				multiplayer_event_multiplayer_campaign_server_event_player_party_defeated, ":player_no", ":captor"),
+		(try_end),
+	]),
+
+	# The single entry for a lost fight (dedicated apply pass, ch49 ev 17).
+	# Native total_defeat (module_game_menus.py:4855) server-side, minus the
+	# luck roll (row C13), then the captivity record, and the party goes
+	# onto the captor (row B2).
+	# A captor that is gone means no captivity: the player just escapes.
+	("coop_player_defeat", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":captor", 2),
+		(store_script_param, ":kind", 3),
+		(player_get_party_id, ":party", ":player_no"),
+		(player_get_troop_id, ":troop", ":player_no"),
+		(str_store_player_username, s0, ":player_no"),
+		(try_begin),
+			(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+			(display_message, "@[CAPTIVITY] {s0}: defeated while already captive -- ignored"),
+		(else_try),
+			(this_or_next|le, ":captor", 0),
+			(neg|party_is_active, ":captor"),
+			(display_message, "@[CAPTIVITY] {s0}: defeated, no captor left -- escapes"),
+			(call_script, "script_coop_broadcast_player_defeated", ":player_no", 0),
+		(else_try),
+			(party_get_num_prisoner_stacks, ":num_prisoner_stacks", ":party"),
+			(try_for_range, ":stack_no", 0, ":num_prisoner_stacks"),
+				(party_prisoner_stack_get_troop_id, ":stack_troop", ":party", ":stack_no"),
+				(troop_is_hero, ":stack_troop"),
+				(call_script, "script_remove_troop_from_prison", ":stack_troop"),
+			(try_end),
+			(call_script, "script_battle_political_consequences", ":party", ":captor"),
+			(call_script, "script_loot_player_items", ":captor", ":troop"),
+			(assign, "$g_move_heroes", 0),
+			(party_clear, "p_temp_party"),
+			(call_script, "script_party_add_party_prisoners", "p_temp_party", ":party"),
+			(call_script, "script_party_prisoners_add_party_companions", "p_temp_party", ":party"),
+			(distribute_party_among_party_group, "p_temp_party", ":captor"),
+			(assign, "$g_prison_heroes", 1),
+			(call_script, "script_party_remove_all_companions", ":party", ":captor"),
+			(assign, "$g_prison_heroes", 0),
+			(assign, "$g_move_heroes", 1),
+			(call_script, "script_party_remove_all_prisoners", ":party"),
+			(store_current_hours, ":until"),
+			(try_begin),
+				(eq, ":kind", coop_captive_kind_castle),
+				(store_random_in_range, ":hours", 16, 22),
+			(else_try),
+				(store_random_in_range, ":hours", 18, 30),
+			(try_end),
+			(val_add, ":until", ":hours"),
+			(call_script, "script_coop_captivity_record_set", ":player_no", ":captor", ":kind", ":until", 0),
+			(call_script, "script_coop_captivity_place_on_captor", ":player_no"),
+			# Off the map while held: a disabled party is hidden on every
+			# client and out of encounters and AI targeting. It leaves its
+			# defeat battle first -- a party disabled inside a map battle can
+			# be removed when that battle ends.
+			(party_leave_cur_battle, ":party"),
+			(disable_party, ":party"),
+			(player_set_slot, ":player_no", slot_player_coop_in_local_encounter, coop_busy_captive),
+			(call_script, "script_coop_save_character", ":player_no"),
+			(call_script, "script_coop_send_char_sync_to_client", ":player_no"),
+			(call_script, "script_coop_push_player_inventory", ":player_no"),
+			(call_script, "script_coop_send_party_upgradeable_to_client", ":player_no"),
+			(call_script, "script_coop_captivity_push_state", ":player_no", ":kind"),
+			(call_script, "script_coop_broadcast_player_defeated", ":player_no", ":captor"),
+			(str_store_player_username, s0, ":player_no"),
+			(str_store_party_name, s1, ":captor"),
+			(assign, reg1, ":until"),
+			(assign, reg2, ":kind"),
+			(display_message, "@[CAPTIVITY] {s0}: taken prisoner by {s1} (kind {reg2}), next roll at hour {reg1}"),
+		(try_end),
+	]),
+
+	# The one way out of captivity. state: escaped / exchanged (radius 2),
+	# ransomed (radius 1), set_free (the captor was beaten: stay put).
+	("coop_captivity_release", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":state", 2),
+		(player_get_slot, ":captor", ":player_no", slot_player_coop_captor),
+		(player_get_party_id, ":party", ":player_no"),
+		(try_begin),
+			(gt, ":party", 0),
+			(enable_party, ":party"),
+		(try_end),
+		(try_begin),
+			(party_is_active, ":party"),
+			(try_begin),
+				(neq, ":state", coop_captive_state_set_free),
+				(try_begin),
+					(gt, ":captor", 0),
+					(party_is_active, ":captor"),
+					(assign, ":radius", 2),
+					(try_begin),
+						(eq, ":state", coop_captive_state_ransomed),
+						(assign, ":radius", 1),
+					(try_end),
+					(party_relocate_near_party, ":party", ":captor", ":radius"),
+				(try_end),
+				(call_script, "script_set_parties_around_player_ignore_player", 8, 12, ":party"),
+			(try_end),
+		(try_end),
+		(call_script, "script_coop_captivity_record_set", ":player_no", 0, 0, 0, 0),
+		(player_set_slot, ":player_no", slot_player_coop_in_local_encounter, 0),
+		(call_script, "script_coop_save_character", ":player_no"),
+		(call_script, "script_coop_captivity_push_state", ":player_no", ":state"),
+		(str_store_player_username, s0, ":player_no"),
+		(assign, reg1, ":state"),
+		(display_message, "@[CAPTIVITY] {s0}: released (state {reg1})"),
+	]),
+
+	# Every online captive held by a party that is about to be destroyed or
+	# captured goes free with it (the rescue in ruling `captivity`).
+	("coop_captivity_release_party_captives", [
+		(store_script_param, ":captor", 1),
+		(try_begin),
+			(gt, ":captor", 0),
+			(try_for_players, ":player_no", 1),
+				(player_slot_eq, ":player_no", slot_player_coop_captor, ":captor"),
+				(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_set_free),
+			(try_end),
+		(try_end),
+	]),
+
+	# Native captivity_castle_check (module_game_menus.py:12291) server-side.
+	("coop_captivity_castle_check", [
+		(store_script_param, ":player_no", 1),
+		(player_get_slot, ":captor", ":player_no", slot_player_coop_captor),
+		(player_get_troop_id, ":troop", ":player_no"),
+		(store_random_in_range, ":roll", 0, 10),
+		(store_faction_of_party, ":captor_faction", ":captor"),
+		(store_relation, ":relation", ":captor_faction", "fac_player_faction"),
+		(str_store_player_username, s0, ":player_no"),
+		(str_store_faction_name, s1, ":captor_faction"),
+		(assign, reg1, ":roll"),
+		(assign, reg2, ":relation"),
+		(store_troop_gold, reg3, ":troop"),
+		(store_character_level, reg4, ":troop"),
+		(display_message, "@[CAPTIVITY] {s0}: castle roll {reg1}, captor {s1} relation {reg2}, gold {reg3}, level {reg4}"),
+		(try_begin),
+			(is_between, ":captor_faction", kingdoms_begin, kingdoms_end),
+			(ge, ":relation", 0),
+			(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_exchanged),
+		(else_try),
+			(lt, ":roll", 4),
+			(store_character_level, ":level", ":troop"),
+			(store_mul, ":ransom", ":level", 50),
+			(val_add, ":ransom", 100),
+			(store_troop_gold, ":gold", ":troop"),
+			(store_div, ":gold_div_20", ":gold", 20),
+			(val_add, ":ransom", ":gold_div_20"),
+			(gt, ":gold", ":ransom"),
+			(player_get_slot, ":until", ":player_no", slot_player_coop_captive_until),
+			(call_script, "script_coop_captivity_record_set", ":player_no", ":captor", coop_captive_kind_castle, ":until", ":ransom"),
+			(call_script, "script_coop_captivity_push_state", ":player_no", coop_captive_kind_castle),
+		(else_try),
+			(lt, ":roll", 7),
+			(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_exchanged),
+		(else_try),
+			(store_current_hours, ":until"),
+			(store_random_in_range, ":hours", 16, 22),
+			(val_add, ":until", ":hours"),
+			(call_script, "script_coop_captivity_record_set", ":player_no", ":captor", coop_captive_kind_castle, ":until", 0),
+			(call_script, "script_coop_captivity_push_state", ":player_no", coop_captive_state_remain),
+		(try_end),
+	]),
+
+	# Per campaign hour (coop_player_hour_tick). A captor that no longer
+	# exists (disbanded, captured by AI) counts as an escape. A pending
+	# ransom offer waits for the player's answer.
+	("coop_captivity_tick", [
+		(store_script_param, ":player_no", 1),
+		(try_begin),
+			(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+			(player_get_slot, ":captor", ":player_no", slot_player_coop_captor),
+			(player_get_slot, ":until", ":player_no", slot_player_coop_captive_until),
+			(player_get_slot, ":kind", ":player_no", slot_player_coop_captive_kind),
+			(store_current_hours, ":now"),
+			(try_begin),
+				(neg|party_is_active, ":captor"),
+				(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_escaped),
+			(else_try),
+				(ge, ":now", ":until"),
+				(player_slot_eq, ":player_no", slot_player_coop_captive_ransom, 0),
+				(try_begin),
+					(eq, ":kind", coop_captive_kind_castle),
+					(call_script, "script_coop_captivity_castle_check", ":player_no"),
+				(else_try),
+					(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_escaped),
+				(try_end),
+			(try_end),
+		(try_end),
+	]),
+
+	# A captive's party stays on the map, on its captor, and is never
+	# attached to it: the engine builds a battle's sides from a party and
+	# everything attached to it, so an attached captive would fight for its
+	# captor. AI parties do not see a captive (game_check_party_sees_party)
+	# and an encounter with one is bounced (game_event_party_encounter).
+	("coop_captivity_place_on_captor", [
+		(store_script_param, ":player_no", 1),
+		(try_begin),
+			(player_get_slot, ":captor", ":player_no", slot_player_coop_captor),
+			(party_is_active, ":captor"),
+			(player_get_party_id, ":party", ":player_no"),
+			(party_get_position, pos1, ":captor"),
+			(party_set_position, ":party", pos1),
+		(try_end),
+	]),
+
+	# Server copy: the saved position and the release spot are the captor's.
+	# The client moves its own copy (coop_captivity_client_follow_captor).
+	("coop_captivity_follow_captors", [
+		(try_for_players, ":player_no", 1),
+			(try_begin),
+				(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+				(call_script, "script_coop_captivity_place_on_captor", ":player_no"),
+			(try_end),
+		(try_end),
+	]),
+
+	# Hydrate: player slots are wiped per connection, so the record comes
+	# back from the dict. A captor that is gone, or whose id now names a
+	# different party (a fresh world), means the player escaped meanwhile.
+	("coop_captivity_hydrate", [
+		(store_script_param, ":player_no", 1),
+		(call_script, "script_coop_quest_dict_load", ":player_no"),
+		(assign, ":captor", 0),
+		(try_begin),
+			(eq, reg0, 1),
+			(dict_get_int, ":captor", "$coop_quest_dict", "@char_captor", 0),
+			(dict_get_int, ":template", "$coop_quest_dict", "@char_captor_template", 0),
+			(dict_get_int, ":kind", "$coop_quest_dict", "@char_captive_kind", 0),
+			(dict_get_int, ":until", "$coop_quest_dict", "@char_captive_until", 0),
+			(dict_get_int, ":ransom", "$coop_quest_dict", "@char_captive_ransom", 0),
+			(dict_free, "$coop_quest_dict"),
+		(try_end),
+		(try_begin),
+			(gt, ":captor", 0),
+			(assign, ":held", 0),
+			(try_begin),
+				(party_is_active, ":captor"),
+				(party_get_template_id, ":live_template", ":captor"),
+				(eq, ":live_template", ":template"),
+				(assign, ":held", 1),
+			(try_end),
+			(try_begin),
+				(eq, ":held", 1),
+				(call_script, "script_coop_captivity_record_set", ":player_no", ":captor", ":kind", ":until", ":ransom"),
+				(call_script, "script_coop_captivity_place_on_captor", ":player_no"),
+				(player_get_party_id, ":held_party", ":player_no"),
+				(disable_party, ":held_party"),
+				(player_set_slot, ":player_no", slot_player_coop_in_local_encounter, coop_busy_captive),
+				(call_script, "script_coop_captivity_push_state", ":player_no", ":kind"),
+			(else_try),
+				# The slots are still zero (wiped per connection), so the
+				# release relocates nowhere and clears the dict record.
+				(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_escaped),
+			(try_end),
+		(try_end),
+	]),
+
+	# ch49 41: the answer to a castle ransom offer.
+	("coop_ev_cli_captivity_ransom_answer", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":accept", 2),
+		(str_store_player_username, s0, ":player_no"),
+		(player_get_slot, ":ransom", ":player_no", slot_player_coop_captive_ransom),
+		(player_get_troop_id, ":troop", ":player_no"),
+		(store_troop_gold, ":gold", ":troop"),
+		(try_begin),
+			(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+			(gt, ":ransom", 0),
+			(eq, ":accept", 1),
+			(ge, ":gold", ":ransom"),
+			(troop_remove_gold, ":troop", ":ransom"),
+			(assign, reg1, ":ransom"),
+			(display_message, "@[CAPTIVITY] {s0}: paid a ransom of {reg1}"),
+			(call_script, "script_coop_captivity_release", ":player_no", coop_captive_state_ransomed),
+			(call_script, "script_coop_send_char_sync_to_client", ":player_no"),
+		(else_try),
+			(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+			(gt, ":ransom", 0),
+			(eq, ":accept", 0),
+			(player_get_slot, ":captor", ":player_no", slot_player_coop_captor),
+			(store_current_hours, ":until"),
+			(store_random_in_range, ":hours", 16, 22),
+			(val_add, ":until", ":hours"),
+			(call_script, "script_coop_captivity_record_set", ":player_no", ":captor", coop_captive_kind_castle, ":until", 0),
+			(call_script, "script_coop_captivity_push_state", ":player_no", coop_captive_state_remain),
+		(else_try),
+			(assign, reg1, ":accept"),
+			(assign, reg2, ":ransom"),
+			(assign, reg3, ":gold"),
+			(display_message, "@[CAPTIVITY] {s0}: ransom answer {reg1} REJECTED (offer {reg2}, gold {reg3})"),
+			# The client closed its menu on answering: offer again.
+			(try_begin),
+				(call_script, "script_cf_coop_player_is_captive", ":player_no"),
+				(gt, ":ransom", 0),
+				(call_script, "script_coop_captivity_push_state", ":player_no", coop_captive_kind_castle),
+			(try_end),
 		(try_end),
 	]),
 
@@ -13255,6 +13844,10 @@ coop_scripts = [
 			(store_sub, ":played", ":stamp", ":previous"),
 		(try_end),
 		(call_script, "script_coop_wage_tick", ":player_no", 0, ":played"),
+		(call_script, "script_coop_morale_tick", ":player_no", ":played"),
+		(call_script, "script_coop_food_tick", ":player_no", ":played"),
+		(call_script, "script_coop_food_spoil_tick", ":player_no", ":played"),
+		(call_script, "script_coop_captivity_tick", ":player_no"),
 	]),
 
 	# Wage of one party for one week: calculate_player_faction_wage for a
@@ -13432,7 +14025,11 @@ coop_scripts = [
 	]),
 
 	# Client, ch125 ev 63: native's own wage globals (read by the budget and
-	# morale reports), plus the payday line.
+	# morale reports), plus the payday line. A payday also keeps the wage it
+	# charged and the gold and debt from before it for the payday budget
+	# report (its half-day count has already restarted): the server sent the
+	# char sync (gold after paying) ahead of this event, and due = wage + old
+	# debt = paid + new debt.
 	("coop_wage_client_recv", [
 		(store_script_param, ":packed", 1),
 		(store_script_param, ":paid", 2),
@@ -13447,6 +14044,13 @@ coop_scripts = [
 		(assign, "$g_cur_week_half_daily_wage_payments", ":half_days"),
 		(try_begin),
 			(eq, ":payday", 1),
+			(assign, "$g_coop_payday_wage", ":wage"),
+			(store_add, "$g_coop_payday_debt_before", ":debt", ":paid"),
+			(val_sub, "$g_coop_payday_debt_before", ":wage"),
+			(call_script, "script_coop_my_troop"),
+			(store_troop_gold, "$g_coop_payday_gold_before", reg0),
+			(val_add, "$g_coop_payday_gold_before", ":paid"),
+			(assign, "$g_coop_budget_report_pending", 1),
 			(assign, reg1, ":wage"),
 			(assign, reg2, ":paid"),
 			(assign, reg3, ":debt"),
@@ -13457,6 +14061,280 @@ coop_scripts = [
 				(display_message, "@Payday: {reg1} denars in wages; you could pay only {reg2} and owe your men {reg3} denars.", 0xFF0000),
 			(try_end),
 		(try_end),
+	]),
+
+  # ==================================================================
+  # MORALE (party_morale): native's party morale per player party, owned
+  # by the campaign server; the client shows it (ch125 ev 65).
+  # ==================================================================
+
+	# The only writer of a live player party's morale: sets it and tells the
+	# player. Input: player_no, value, reason (coop_morale_reason_*).
+	("coop_set_party_morale", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":value", 2),
+		(store_script_param, ":reason", 3),
+		(player_get_party_id, ":party_no", ":player_no"),
+		(try_begin),
+			(party_is_active, ":party_no"),
+			(party_get_morale, ":old", ":party_no"),
+			(party_set_morale, ":party_no", ":value"),
+			(store_sub, ":delta", ":value", ":old"),
+			(val_add, ":delta", 128),
+			(multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
+				multiplayer_event_multiplayer_campaign_server_event_party_morale, ":value", ":delta", ":reason"),
+		(try_end),
+	]),
+
+	# Moves a live player party's morale by delta, clamped to 0..100, through
+	# coop_set_party_morale. Input: player_no, delta, reason (coop_morale_reason_*).
+	("coop_change_party_morale", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":delta", 2),
+		(store_script_param, ":reason", 3),
+		(player_get_party_id, ":party_no", ":player_no"),
+		(try_begin),
+			(party_is_active, ":party_no"),
+			(party_get_morale, ":value", ":party_no"),
+			(val_add, ":value", ":delta"),
+			(val_clamp, ":value", 0, 101),
+			(call_script, "script_coop_set_party_morale", ":player_no", ":value", ":reason"),
+		(try_end),
+	]),
+
+	# Client, ch125 ev 65: the own party copy carries the value (the party
+	# window and the morale report read it); event reasons print native's line.
+	("coop_morale_client_recv", [
+		(store_script_param, ":morale", 1),
+		(store_script_param, ":delta", 2),
+		(store_script_param, ":reason", 3),
+		(val_sub, ":delta", 128),
+		(call_script, "script_coop_my_party"),
+		(assign, ":party_no", reg0),
+		(party_set_morale, ":party_no", ":morale"),
+		(try_begin),
+			(gt, ":reason", coop_morale_reason_sync),
+			(try_begin),
+				(eq, ":reason", coop_morale_reason_no_food),
+				(display_message, "@Party has nothing to eat!", 0xFF0000),
+			(try_end),
+			(try_begin),
+				(lt, ":delta", 0),
+				(store_sub, reg1, 0, ":delta"),
+				(display_message, "str_party_lost_morale"),
+			(else_try),
+				(gt, ":delta", 0),
+				(assign, reg1, ":delta"),
+				(display_message, "str_party_gained_morale"),
+			(try_end),
+		(try_end),
+	]),
+
+	# Morale arm of coop_player_hour_tick: native's daily drift
+	# (module_simple_triggers.py:782) once per 24 played hours, toward
+	# get_player_party_morale_values with the wage debt. Also stores the
+	# current morale, so the dict never lags the party by more than an hour.
+	("coop_morale_tick", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":played", 2),
+		(try_begin),
+			(gt, ":played", 0),
+			(call_script, "script_coop_quest_dict_load", ":player_no"),
+			(eq, reg0, 1),
+			(dict_get_int, ":hours", "$coop_quest_dict", "@char_morale_hours", 0),
+			(dict_get_int, ":debt", "$coop_quest_dict", "@char_wage_debt", 0),
+			(val_add, ":hours", ":played"),
+			(store_div, ":days", ":hours", 24),
+			(val_mod, ":hours", 24),
+			(player_get_party_id, ":party_no", ":player_no"),
+			(try_begin),
+				(gt, ":days", 0),
+				(party_is_active, ":party_no"),
+				(player_get_troop_id, ":troop_no", ":player_no"),
+				(call_script, "script_get_player_party_morale_values", ":party_no", ":troop_no", ":debt"),
+				(assign, ":target", reg0),
+				(party_get_morale, ":cur", ":party_no"),
+				(store_sub, ":dif", ":target", ":cur"),
+				(store_div, ":step", ":dif", 5),
+				(store_mul, ":check", ":step", 5),
+				(try_begin),
+					(neq, ":check", ":dif"),
+					(try_begin),
+						(gt, ":dif", 0),
+						(val_add, ":step", 1),
+					(else_try),
+						(val_sub, ":step", 1),
+					(try_end),
+				(try_end),
+				(val_add, ":cur", ":step"),
+				(call_script, "script_coop_set_party_morale", ":player_no", ":cur", coop_morale_reason_drift),
+			(try_end),
+			(dict_set_int, "$coop_quest_dict", "@char_morale_hours", ":hours"),
+			(party_get_morale, ":morale", ":party_no"),
+			(dict_set_int, "$coop_quest_dict", "@char_party_morale", ":morale"),
+			(call_script, "script_coop_quest_dict_save", ":player_no"),
+		(try_end),
+	]),
+
+	# Native's courage init (module_mission_templates.py:2229-2249) for a
+	# battle-server bot. Its party is the temp spawn party in
+	# slot_agent_coop_spawn_party, not an engine party.
+	("coop_agent_init_courage", [
+		(store_script_param, ":agent_no", 1),
+		(agent_get_slot, ":party_no", ":agent_no", slot_agent_coop_spawn_party),
+		(try_begin),
+			(gt, ":party_no", 0),
+			(assign, ":courage", 5000),
+			(agent_get_troop_id, ":troop_id", ":agent_no"),
+			(store_character_level, ":level", ":troop_id"),
+			(val_mul, ":level", 35),
+			(val_add, ":courage", ":level"),
+			(store_random_in_range, ":random", 0, 3000),
+			(val_add, ":courage", ":random"),
+			(party_get_morale, ":morale", ":party_no"),
+			(val_sub, ":morale", 70),
+			(val_mul, ":morale", 30),
+			(val_add, ":courage", ":morale"),
+			(agent_set_slot, ":agent_no", slot_agent_courage_score, ":courage"),
+		(try_end),
+	]),
+
+  # ==================================================================
+  # FOOD (food): native's feeding (every 14 h) and meat spoilage (every
+  # 24 h) for a player party, counted in played hours. Each arm keeps its
+  # counter in the quest dict and saves it before the character, because
+  # coop_save_character rebuilds the char file from the troop and keeps
+  # the counters.
+  # ==================================================================
+
+	# Food arm of coop_player_hour_tick: one native feeding per 14 played
+	# hours. A party that found nothing to eat in any cycle loses 3 morale,
+	# once per tick. The character is saved when food was eaten or morale
+	# dropped, and pushed only when food was eaten. Input: player_no, played.
+	("coop_food_tick", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":played", 2),
+		(try_begin),
+			(gt, ":played", 0),
+			(player_slot_eq, ":player_no", slot_player_coop_captor, 0),
+			(player_get_party_id, ":party_no", ":player_no"),
+			(party_is_active, ":party_no"),
+			(call_script, "script_coop_quest_dict_load", ":player_no"),
+			(eq, reg0, 1),
+			(dict_get_int, ":hours", "$coop_quest_dict", "@char_food_hours", 0),
+			(val_add, ":hours", ":played"),
+			(store_div, ":cycles", ":hours", 14),
+			(val_mod, ":hours", 14),
+			(dict_set_int, "$coop_quest_dict", "@char_food_hours", ":hours"),
+			(call_script, "script_coop_quest_dict_save", ":player_no"),
+			(try_begin),
+				(gt, ":cycles", 0),
+				(player_get_troop_id, ":troop_no", ":player_no"),
+				(assign, ":hungry", 0),
+				(assign, ":eaten", 0),
+				(try_for_range, ":unused", 0, ":cycles"),
+					(call_script, "script_party_consume_food", ":party_no", ":troop_no"),
+					(assign, ":short", reg0),
+					(assign, ":ate", reg1),
+					(try_begin),
+						(eq, ":short", 1),
+						(assign, ":hungry", 1),
+					(try_end),
+					(try_begin),
+						(eq, ":ate", 1),
+						(assign, ":eaten", 1),
+					(try_end),
+				(try_end),
+				(try_begin),
+					(eq, ":hungry", 1),
+					(call_script, "script_coop_change_party_morale", ":player_no", -3, coop_morale_reason_no_food),
+				(try_end),
+				(try_begin),
+					(this_or_next|eq, ":eaten", 1),
+					(eq, ":hungry", 1),
+					(call_script, "script_coop_save_character", ":player_no"),
+				(try_end),
+				(try_begin),
+					(eq, ":eaten", 1),
+					(call_script, "script_coop_push_player_inventory", ":player_no"),
+				(try_end),
+			(try_end),
+		(try_end),
+	]),
+
+	# Spoil arm of coop_player_hour_tick: native's meat aging once per 24
+	# played hours. The character is saved and pushed only when a modifier
+	# changed. Input: player_no, played.
+	("coop_food_spoil_tick", [
+		(store_script_param, ":player_no", 1),
+		(store_script_param, ":played", 2),
+		(try_begin),
+			(gt, ":played", 0),
+			(player_slot_eq, ":player_no", slot_player_coop_captor, 0),
+			(player_get_party_id, ":party_no", ":player_no"),
+			(party_is_active, ":party_no"),
+			(call_script, "script_coop_quest_dict_load", ":player_no"),
+			(eq, reg0, 1),
+			(dict_get_int, ":hours", "$coop_quest_dict", "@char_spoil_hours", 0),
+			(val_add, ":hours", ":played"),
+			(store_div, ":cycles", ":hours", 24),
+			(val_mod, ":hours", 24),
+			(dict_set_int, "$coop_quest_dict", "@char_spoil_hours", ":hours"),
+			(call_script, "script_coop_quest_dict_save", ":player_no"),
+			(try_begin),
+				(gt, ":cycles", 0),
+				(player_get_troop_id, ":troop_no", ":player_no"),
+				(assign, ":changed", 0),
+				(try_for_range, ":unused", 0, ":cycles"),
+					(call_script, "script_troop_age_food", ":troop_no"),
+					(assign, ":aged", reg0),
+					(try_begin),
+						(eq, ":aged", 1),
+						(assign, ":changed", 1),
+					(try_end),
+				(try_end),
+				(try_begin),
+					(eq, ":changed", 1),
+					(call_script, "script_coop_save_character", ":player_no"),
+					(call_script, "script_coop_push_player_inventory", ":player_no"),
+				(try_end),
+			(try_end),
+		(try_end),
+	]),
+
+	# ch125 64 (client): captivity state. Opens the captivity menu; the map
+	# stays passive while $g_coop_captive is set (B-key, no encounters).
+	("coop_captivity_client_recv", [
+		(store_script_param, ":captor", 1),
+		(store_script_param, ":state", 2),
+		(store_script_param, ":ransom", 3),
+		(assign, "$g_coop_captive_state", ":state"),
+		(assign, "$g_coop_captive_ransom", ":ransom"),
+		(assign, "$g_coop_captor_party", ":captor"),
+		(try_begin),
+			(gt, ":captor", 0),
+			(assign, "$g_coop_captive", 1),
+		(else_try),
+			(assign, "$g_coop_captive", 0),
+		(try_end),
+		(call_script, "script_coop_client_camera_follow"),
+		(call_script, "script_coop_client_request_menu", "mnu_coop_captivity"),
+	]),
+
+	# Client, every frame while captive: the own party copy rides on the
+	# captor. The engine aims the map camera at the own party on every map
+	# click, pan and map open, and centres the fog of war on it.
+	("coop_captivity_client_follow_captor", [
+		(multiplayer_get_my_player, ":my_player"),
+		(store_add, ":my_party", multiplayer_campaign_player_parties_begin, ":my_player"),
+		(party_get_position, pos1, "$g_coop_captor_party"),
+		(party_set_position, ":my_party", pos1),
+	]),
+
+	# ch49 41 sender: the ransom offer's two menu options.
+	("coop_captivity_send_ransom_answer", [
+		(store_script_param, ":accept", 1),
+		(multiplayer_send_2_int_to_server, multiplayer_event_multiplayer_campaign_client_events, multiplayer_event_multiplayer_campaign_captivity_ransom_answer, ":accept"),
 	]),
 
   # ==================================================================
@@ -13905,18 +14783,23 @@ coop_scripts = [
 		# reconnects) the player's slots may already be wiped, which stranded
 		# both the lock and the party attach. Centers are parties, their slots
 		# survive, and player_no is a reliable script param.
+		(assign, ":held", 0),
 		(try_for_range, ":center", centers_begin, centers_end),
 			(party_slot_eq, ":center", slot_center_coop_lock_player, ":player_no"),
 			(party_set_slot, ":center", slot_center_coop_lock_player, -1),
+			(assign, ":held", 1),
 		(try_end),
 		(try_begin),
 			(player_is_active, ":player_no"),
 			(player_set_slot, ":player_no", slot_player_coop_locked_center, 0),
 		(try_end),
-		# Detach the holder's party by deterministic id -- player_get_party_id
-		# can return -1 once the slot is gone, but the party object persists.
+		# Detach only a lock holder's party: an unlocked party may be held
+		# by its captor. Exit detaches unconditionally on its own.
+		# Deterministic id -- player_get_party_id can return -1 once the slot
+		# is gone, but the party object persists.
 		(store_add, ":party_no", multiplayer_campaign_player_parties_begin, ":player_no"),
 		(try_begin),
+			(eq, ":held", 1),
 			(party_is_active, ":party_no"),
 			(party_detach, ":party_no"),
 		(try_end),
@@ -14618,7 +15501,7 @@ coop_scripts = [
             # Client is fighting encounter locally. Mark busy, save baseline,
             # and freeze the party so the server stops simulating it for the
             # duration of the local battle (mirrors player_exit). Rejoin
-            # re-enables via enable_party in multiplayer_campaign_player_joined.
+            # re-enables it via enable_party in coop_player_hydrate.
             (str_store_player_username, s0, ":player_no"),
             (display_message, "@{s0}: Entering local SP battle."),
             (player_set_slot, ":player_no", slot_player_coop_in_local_encounter, 1),
@@ -14636,7 +15519,41 @@ coop_scripts = [
                 (disable_party, ":lf_party"),
                 (display_message, "@{s0}: party frozen for local battle."),
             (try_end),
+            (call_script, "script_coop_local_fight_hold_enemy", ":player_no"),
         	]),
+
+	# The engine freezes both parties of a map battle while its event stays
+	# open; game_event_simulate_battle keeps an event open while either
+	# side carries a battle marker. A local fight marks its opponent (from
+	# the ev-16 stash) so it holds still until the result arrives; centers
+	# never move and must not bounce visitors, so they are not marked.
+	("coop_local_fight_hold_enemy", [
+		(store_script_param, ":player_no", 1),
+		(call_script, "script_coop_char_local_enemy_get", ":player_no"),
+		(assign, ":enemy_party", reg0),
+		(try_begin),
+			(gt, ":enemy_party", 0),
+			(party_is_active, ":enemy_party"),
+			(neg|party_slot_eq, ":enemy_party", slot_party_type, spt_town),
+			(neg|party_slot_eq, ":enemy_party", slot_party_type, spt_castle),
+			(neg|party_slot_eq, ":enemy_party", slot_party_type, spt_village),
+			(party_set_slot, ":enemy_party", slot_party_coop_battle_slot, coop_battle_mark_local_fight),
+		(try_end),
+	]),
+
+	# ch49 ev 17: the local fight is over -- unmark the opponent and close
+	# its map battle (the rejoined player party no longer holds it).
+	("coop_local_fight_release_enemy", [
+		(store_script_param, ":player_no", 1),
+		(call_script, "script_coop_char_local_enemy_get", ":player_no"),
+		(assign, ":enemy_party", reg0),
+		(try_begin),
+			(gt, ":enemy_party", 0),
+			(party_slot_eq, ":enemy_party", slot_party_coop_battle_slot, coop_battle_mark_local_fight),
+			(party_set_slot, ":enemy_party", slot_party_coop_battle_slot, 0),
+			(party_leave_cur_battle, ":enemy_party"),
+		(try_end),
+	]),
 
 	# A7: victory consequences for LOCAL fights. The client fought a local
 	# copy; the server-side enemy party still holds the full pre-battle
@@ -14754,6 +15671,8 @@ coop_scripts = [
 		(store_script_param, ":captor_player_no", 1),
 		(store_script_param, ":center_no", 2),
 
+		(call_script, "script_coop_captivity_release_party_captives", ":center_no"),
+
 		(store_faction_of_party, ":old_faction", ":center_no"),
 
 		# Garrison spent. Centers are never remove_party'd.
@@ -14814,6 +15733,7 @@ coop_scripts = [
                 (display_message, "@{s0}: Local fight result: win={reg1} casualties={reg2} xp_gained={reg3}"),
                 # Clear busy flag
                 (player_set_slot, ":player_no", slot_player_coop_in_local_encounter, 0),
+                (call_script, "script_coop_local_fight_release_enemy", ":player_no"),
                 # Apply XP SP-style to hero + all troop stacks.
                 (try_begin),
                     (gt, ":xp_gained", 0),
@@ -14885,6 +15805,7 @@ coop_scripts = [
                         (try_end),
                         (call_script, "script_coop_victory_consequences_local", ":player_no", ":enemy_party"),
                         (party_leave_cur_battle, ":enemy_party"),
+                        (call_script, "script_coop_captivity_release_party_captives", ":enemy_party"),
                         (party_clear, ":enemy_party"),
                         (remove_party, ":enemy_party"),
                     (try_end),
@@ -14906,6 +15827,25 @@ coop_scripts = [
                 # Notify client encounter is resolved
                 (multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events,
                     multiplayer_event_multiplayer_campaign_server_event_encounter_resolved, 0),
+                # A local loss is a defeat: the client reports -1 only when
+                # every troop it brought fell (a merely knocked-out player
+                # with fit troops standing reports 0).
+                # The captor is the besieged center, else the stashed
+                # opponent from ev 16.
+                (try_begin),
+                    (eq, ":win_loss", -1),
+                    (assign, ":defeat_kind", coop_captive_kind_wilderness),
+                    (assign, ":defeat_captor", ":siege_center"),
+                    (try_begin),
+                        (gt, ":defeat_captor", 0),
+                        (assign, ":defeat_kind", coop_captive_kind_castle),
+                    (else_try),
+                        (call_script, "script_coop_char_local_enemy_get", ":player_no"),
+                        (assign, ":defeat_captor", reg0),
+                        (call_script, "script_coop_char_local_enemy_set", ":player_no", 0),
+                    (try_end),
+                    (call_script, "script_coop_player_defeat", ":player_no", ":defeat_captor", ":defeat_kind"),
+                (try_end),
             (else_try),
                 # Per-stack casualty data: troop_id, killed_count
                 (assign, ":troop_id", ":p4"),
@@ -14949,10 +15889,6 @@ coop_scripts = [
 			(store_script_param, ":state", 3),
 			(call_script, "script_coop_ev_srv_party_add_particle_system", ":party_no", ":state"),
 		(else_try),
-			(eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_camera_follow_party),
-			(store_script_param, ":party_no", 2),
-			(set_camera_follow_party, ":party_no", 1),
-		(else_try),
 			(eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_player_joined),
 			(store_script_param, ":player_no", 2),
 			(call_script, "script_coop_ev_srv_player_joined", ":player_no"),
@@ -14964,8 +15900,15 @@ coop_scripts = [
 		(else_try),
 			(eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_player_party_defeated),
 			(store_script_param, ":player_no", 2),
+			(store_script_param, ":captor", 3),
 			(str_store_player_username, s0, ":player_no"),
-			(display_message, "@{s0} was defeated in battle but managed to escape."),
+			(try_begin),
+				(gt, ":captor", 0),
+				(str_store_party_name, s1, ":captor"),
+				(display_message, "@{s0} was taken prisoner by {s1}."),
+			(else_try),
+				(display_message, "@{s0} was defeated in battle but managed to escape."),
+			(try_end),
         (else_try),
 			(eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_player_start_encounter),
 			(store_script_param, ":encountered_party", 2),
@@ -15049,6 +15992,7 @@ coop_scripts = [
             # (prices, merchant slots, gold) as one concern.
             (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_inv_bag_slot),  # 25
             (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_inv_sync_done),  # 26
+            (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_inv_slot_amount),  # 66
             (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_center_trade_price),  # 29
             (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_trade_merchant_slot),  # 30
             (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_trade_sync_done),  # 31
@@ -15093,8 +16037,8 @@ coop_scripts = [
             (call_script, "script_coop_client_request_menu", "mnu_coop_center_locked"),
         (else_try),
             # Recruit volunteers UI: server pushes the recruit offer (data)
-            # then the outcome (result). Handler shows the menu and applies
-            # recruited troops + gold client-side.
+            # then the outcome (result). Handler shows the menu and sets the
+            # gold; the troops arrive through roster replication.
             (this_or_next|eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_recruit_data),  # 33
             (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_recruit_result),  # 34
             (store_script_param, ":p2", 2),
@@ -15178,6 +16122,18 @@ coop_scripts = [
             (store_script_param, ":p3", 3),
             (store_script_param, ":p4", 4),
             (call_script, "script_coop_wage_client_recv", ":p2", ":p3", ":p4"),
+        (else_try),
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_captivity_state),  # 64
+            (store_script_param, ":p2", 2),
+            (store_script_param, ":p3", 3),
+            (store_script_param, ":p4", 4),
+            (call_script, "script_coop_captivity_client_recv", ":p2", ":p3", ":p4"),
+        (else_try),
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_server_event_party_morale),  # 65
+            (store_script_param, ":p2", 2),
+            (store_script_param, ":p3", 3),
+            (store_script_param, ":p4", 4),
+            (call_script, "script_coop_morale_client_recv", ":p2", ":p3", ":p4"),
 		(try_end),
     ]),
 
@@ -15187,6 +16143,11 @@ coop_scripts = [
 		(store_script_param, ":event_type", 2),
 
 		(try_begin),
+			(call_script, "script_cf_coop_captive_refuses_event", ":player_no", ":event_type"),
+			(str_store_player_username, s0, ":player_no"),
+			(assign, reg1, ":event_type"),
+			(display_message, "@[CAPTIVITY] {s0}: ch49 ev {reg1} REJECTED (captive)"),
+		(else_try),
 			(eq, ":event_type", multiplayer_event_multiplayer_campaign_leave_encounter),
 			(display_message, "@Player leaving encounter"),
             (player_get_party_id, ":party_no", ":player_no"),
@@ -15446,6 +16407,10 @@ coop_scripts = [
             (store_script_param, ":quest_no", 3),
             (store_script_param, ":choice", 4),
             (call_script, "script_coop_ev_cli_quest_claim", ":player_no", ":quest_no", ":choice"),
+        (else_try),
+            (eq, ":event_type", multiplayer_event_multiplayer_campaign_captivity_ransom_answer),  # 41
+            (store_script_param, ":accept", 3),
+            (call_script, "script_coop_ev_cli_captivity_ransom_answer", ":player_no", ":accept"),
 		(try_end),
     ]),
 
@@ -15646,6 +16611,101 @@ coop_scripts = [
 		(try_end),
 	]),
 
+	# script_coop_battle_slot_abort -- Input: slot, notify_player (0 = none).
+	# The one release of a battle that ends without results (its battle
+	# server lost, or nobody ever reached it): every rostered party leaves
+	# the battle and loses its marker, the file is marked abandoned, and the
+	# slot is freed and closed in every chooser. notify_player is taken out
+	# of the battle too and told it was dropped (ch125 ev 44, param 1).
+	("coop_battle_slot_abort", [
+		(store_script_param, ":slot", 1),
+		(store_script_param, ":notify_player", 2),
+		(dict_create, ":dict"),
+		(call_script, "script_coop_battle_slot_dict_name", ":slot"),
+		(dict_load_file, ":dict", s41),
+		(dict_get_int, ":num_enemy", ":dict", "@num_parties_enemy", 0),
+		(try_for_range, reg20, 0, ":num_enemy"),
+			(call_script, "script_coop_battle_dict_has_roster_party", ":dict", 0, reg20),
+			(eq, reg0, 1),
+			(call_script, "script_coop_battle_dict_read_roster_party", ":dict", 0, reg20),
+			(assign, ":enemy_party", reg0),
+			(gt, ":enemy_party", 0),
+			(party_set_slot, ":enemy_party", slot_party_coop_battle_slot, 0),
+			(party_is_active, ":enemy_party"),
+			(party_leave_cur_battle, ":enemy_party"),
+		(try_end),
+		(dict_get_int, ":num_ally", ":dict", "@num_parties_ally", 0),
+		(try_for_range, reg20, 0, ":num_ally"),
+			(call_script, "script_coop_battle_dict_has_roster_party", ":dict", 1, reg20),
+			(eq, reg0, 1),
+			(call_script, "script_coop_battle_dict_read_roster_party", ":dict", 1, reg20),
+			(assign, ":ally_party", reg0),
+			(gt, ":ally_party", 0),
+			(party_set_slot, ":ally_party", slot_party_coop_battle_slot, 0),
+			(party_is_active, ":ally_party"),
+			(party_leave_cur_battle, ":ally_party"),
+		(try_end),
+		(dict_set_int, ":dict", "@battle_state", coop_battle_state_abandoned),
+		(call_script, "script_coop_battle_slot_dict_name", ":slot"),
+		(dict_save, ":dict", s41),
+		(dict_free, ":dict"),
+		(call_script, "script_coop_battle_slot_set_in_progress", ":slot", 0),
+		(call_script, "script_coop_battle_slot_clear_ended", ":slot"),
+		(call_script, "script_coop_battle_broadcast_slot_closed", ":slot"),
+		(try_begin),
+			(gt, ":notify_player", 0),
+			(player_is_active, ":notify_player"),
+			(player_get_party_id, ":player_party", ":notify_player"),
+			(try_begin),
+				(gt, ":player_party", 0),
+				(party_is_active, ":player_party"),
+				(party_leave_cur_battle, ":player_party"),
+			(try_end),
+			(multiplayer_send_2_int_to_player, ":notify_player", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_battle_rejected, 1),
+		(try_end),
+		(assign, reg1, ":slot"),
+		(display_message, "@[BATTLE] slot {reg1}: abandoned -- slot freed, parties released."),
+	]),
+
+	# script_coop_battle_unjoined_check -- campaign server, hourly. The
+	# battle server turns a battle file from setup_sp into setup_mp when its
+	# first player loads it; a file still at setup_sp after
+	# coop_battle_start_timeout_hours means nobody reached the battle (a
+	# failed hop), so it is released instead of freezing its parties. A slot
+	# already flagged ended is left to the rejoin path.
+	("coop_battle_unjoined_check", [
+		(store_current_hours, ":now"),
+		(try_for_range, ":slot", 0, coop_battle_num_slots),
+			(call_script, "script_coop_battle_slot_get_in_progress", ":slot"),
+			(eq, reg0, 1),
+			(call_script, "script_coop_battle_slot_get_ended", ":slot"),
+			(eq, reg0, 0),
+			(dict_create, ":dict"),
+			(call_script, "script_coop_battle_slot_dict_name", ":slot"),
+			(dict_load_file, ":dict", s41),
+			(dict_get_int, ":state", ":dict", "@battle_state", 0),
+			(dict_get_int, ":written_hour", ":dict", "@battle_written_hour", 0),
+			(dict_get_int, ":joined", ":dict", "@battle_joined", 0),
+			(str_clear, s1),
+			(try_begin),
+				(dict_has_key, ":dict", "@battle_host_player_name"),
+				(dict_get_str, s1, ":dict", "@battle_host_player_name"),
+			(try_end),
+			(dict_free, ":dict"),
+			(eq, ":state", coop_battle_state_setup_sp),
+			(eq, ":joined", 0),
+			(store_sub, ":waited", ":now", ":written_hour"),
+			(ge, ":waited", coop_battle_start_timeout_hours),
+			(call_script, "script_coop_find_player_no_by_name"),
+			(assign, ":initiator", reg0),
+			(val_max, ":initiator", 0),
+			(assign, reg1, ":slot"),
+			(assign, reg2, ":waited"),
+			(display_message, "@[BATTLE] slot {reg1}: nobody joined in {reg2} hours -- releasing."),
+			(call_script, "script_coop_battle_slot_abort", ":slot", ":initiator"),
+		(try_end),
+	]),
+
 	# script_coop_battle_find_free_slot
 	# Output: reg0 = first slot that is online (IPC peer connected) and not
 	# in progress, or -1 if the pool is exhausted/offline.
@@ -15682,7 +16742,7 @@ coop_scripts = [
 
 	# script_coop_battle_dict_write_roster_party
 	# Serializes one campaign party as battle-roster entry {index} on {side}:
-	# @p_{enemy|ally}{i}_partyid/banner/numstacks + per-stack _trp/_num
+	# @p_{enemy|ally}{i}_partyid/banner/numstacks/morale + per-stack _trp/_num
 	# (alive counts only -- wounded subtracted, matching the MP loader).
 	# skip_first=1 omits stack 0 (party leader, e.g. the player character);
 	# stack keys are re-based so the loader sees a dense 0..N-1 range.
@@ -15705,11 +16765,13 @@ coop_scripts = [
 		(store_sub, ":wr_out_stacks", ":wr_num_stacks", ":wr_skip"),
 		(val_max, ":wr_out_stacks", 0),
 		(assign, ":wr_total", 0),
+		(party_get_morale, ":wr_morale", ":wr_party"),
 		(try_begin),
 			(eq, ":wr_side", 0),
 			(dict_set_int, ":wr_dict", "@p_enemy{reg20}_partyid", ":wr_party"),
 			(dict_set_int, ":wr_dict", "@p_enemy{reg20}_banner", 0),
 			(dict_set_int, ":wr_dict", "@p_enemy{reg20}_numstacks", ":wr_out_stacks"),
+			(dict_set_int, ":wr_dict", "@p_enemy{reg20}_morale", ":wr_morale"),
 			(try_for_range, reg21, ":wr_skip", ":wr_num_stacks"),
 				(party_stack_get_troop_id, ":wr_troop", ":wr_party", reg21),
 				(party_stack_get_size, ":wr_size", ":wr_party", reg21),
@@ -15725,6 +16787,7 @@ coop_scripts = [
 			(dict_set_int, ":wr_dict", "@p_ally{reg20}_partyid", ":wr_party"),
 			(dict_set_int, ":wr_dict", "@p_ally{reg20}_banner", 0),
 			(dict_set_int, ":wr_dict", "@p_ally{reg20}_numstacks", ":wr_out_stacks"),
+			(dict_set_int, ":wr_dict", "@p_ally{reg20}_morale", ":wr_morale"),
 			(try_for_range, reg21, ":wr_skip", ":wr_num_stacks"),
 				(party_stack_get_troop_id, ":wr_troop", ":wr_party", reg21),
 				(party_stack_get_size, ":wr_size", ":wr_party", reg21),
@@ -15755,6 +16818,8 @@ coop_scripts = [
 
 		(dict_create, ":dict"),
 		(dict_set_int, ":dict", "@battle_state", coop_battle_state_setup_sp),
+		(store_current_hours, ":written_hour"),
+		(dict_set_int, ":dict", "@battle_written_hour", ":written_hour"),
 		(dict_set_int, ":dict", "@battle_host_party", ":ally_party"),
 		(assign, reg1, ":ally_party"),
 		(display_message, "@[BATTLE SETUP] host_party={reg1}"),
@@ -15908,6 +16973,8 @@ coop_scripts = [
 				(lt, ":num_enemy_parties", 40),
 				(party_get_attached_party_with_rank, ":att_party", ":enemy_party", ":att_i"),
 				(gt, ":att_party", 0),
+				# A player party attached to the center is a visitor, not a defender.
+				(neg|is_between, ":att_party", multiplayer_campaign_player_parties_begin, multiplayer_campaign_player_parties_end),
 				(party_is_active, ":att_party"),
 				(party_get_num_companions, ":att_count", ":att_party"),
 				(gt, ":att_count", 0),
@@ -16540,7 +17607,7 @@ coop_scripts = [
 		# Runs BEFORE the siege capture below: political consequences and
 		# the quest hook need the center's pre-transfer faction and
 		# attachments (native passes the center itself in sieges --
-		# module_game_menus.py:6051 + mnu_total_victory).
+		# mnu_castle_besiege sets $g_enemy_party to it, then mnu_total_victory).
 		(try_begin),
 			(eq, "$g_battle_result", 1),
 			(call_script, "script_coop_victory_consequences_dedicated", ":player_no", ":party_no"),
@@ -16600,6 +17667,7 @@ coop_scripts = [
 					(eq, ":beaten_template", "pt_looters"),
 					(val_add, ":looters_beaten", 1),
 				(try_end),
+				(call_script, "script_coop_captivity_release_party_captives", ":beaten_party"),
 				(party_clear, ":beaten_party"),
 				(remove_party, ":beaten_party"),
 				(assign, reg1, ":beaten_party"),
@@ -16666,6 +17734,39 @@ coop_scripts = [
 			(party_leave_cur_battle, ":party_no"),
 		(try_end),
 
+		# Native "all lost" (module_game_menus.py:3900, 6110): a loss with no
+		# fit troop left is a defeat. The captor is the assaulted center for a
+		# failed siege, else the first enemy party still on the map.
+		(assign, ":defeat", 0),
+		(assign, ":defeat_captor", 0),
+		(assign, ":defeat_kind", coop_captive_kind_wilderness),
+		(try_begin),
+			(eq, "$g_battle_result", -1),
+			(le, "$num_routed_us", 0),
+			# Only the initiator's party fought; a B-key joiner's was not in the battle.
+			(dict_has_key, "$coop_dict", "@battle_host_player_name"),
+			(str_store_player_username, s1, ":player_no"),
+			(dict_get_str, s3, "$coop_dict", "@battle_host_player_name"),
+			(str_equals, s1, s3),
+			(assign, ":defeat", 1),
+			(try_begin),
+				(dict_get_int, ":dk_map_type", "$coop_dict", "@map_type"),
+				(eq, ":dk_map_type", coop_battle_type_siege_player_attack),
+				(dict_get_int, ":defeat_captor", "$coop_dict", "@map_party_id"),
+				(assign, ":defeat_kind", coop_captive_kind_castle),
+			(else_try),
+				(try_for_range, reg20, 0, "$coop_no_enemy_parties"),
+					(eq, ":defeat_captor", 0),
+					(call_script, "script_coop_battle_dict_has_roster_party", "$coop_dict", 0, reg20),
+					(eq, reg0, 1),
+					(call_script, "script_coop_battle_dict_read_roster_party", "$coop_dict", 0, reg20),
+					(gt, reg0, 0),
+					(party_is_active, reg0),
+					(assign, ":defeat_captor", reg0),
+				(try_end),
+			(try_end),
+		(try_end),
+
 		(dict_free, "$coop_dict"),
 
 		# Save character with post-battle party state
@@ -16674,6 +17775,11 @@ coop_scripts = [
 		# Tell client to clear encounter -- the caller is a participant of
 		# this battle by construction (gated above by :arp_participant).
 		(multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_encounter_resolved, 0),
+
+		(try_begin),
+			(eq, ":defeat", 1),
+			(call_script, "script_coop_player_defeat", ":player_no", ":defeat_captor", ":defeat_kind"),
+		(try_end),
 
 		(display_message, "@[BATTLE RESULTS] applied. Encounter resolved."),
 
@@ -16686,43 +17792,9 @@ coop_scripts = [
 			# abort path -- it must wait in the retry arm for a participant.
 			(eq, ":slot_ended", 1),
 			(neq, ":state", coop_battle_state_end_mp),
-			(dict_get_int, ":ab_num_enemy", "$coop_dict", "@num_parties_enemy"),
-			(try_for_range, reg20, 0, ":ab_num_enemy"),
-				(call_script, "script_coop_battle_dict_has_roster_party", "$coop_dict", 0, reg20),
-				(eq, reg0, 1),
-				(call_script, "script_coop_battle_dict_read_roster_party", "$coop_dict", 0, reg20),
-				(assign, ":ab_party", reg0),
-				(gt, ":ab_party", 0),
-				(party_is_active, ":ab_party"),
-				(party_leave_cur_battle, ":ab_party"),
-				(party_set_slot, ":ab_party", slot_party_coop_battle_slot, 0),
-			(try_end),
-			(dict_get_int, ":ab_num_ally", "$coop_dict", "@num_parties_ally"),
-			(try_for_range, reg20, 0, ":ab_num_ally"),
-				(call_script, "script_coop_battle_dict_has_roster_party", "$coop_dict", 1, reg20),
-				(eq, reg0, 1),
-				(call_script, "script_coop_battle_dict_read_roster_party", "$coop_dict", 1, reg20),
-				(assign, ":ab_aparty", reg0),
-				(gt, ":ab_aparty", 0),
-				(party_is_active, ":ab_aparty"),
-				(party_leave_cur_battle, ":ab_aparty"),
-				(party_set_slot, ":ab_aparty", slot_party_coop_battle_slot, 0),
-			(try_end),
-			(player_get_party_id, ":ab_pparty", ":player_no"),
-			(try_begin),
-				(gt, ":ab_pparty", 0),
-				(party_is_active, ":ab_pparty"),
-				(party_leave_cur_battle, ":ab_pparty"),
-			(try_end),
-			(dict_set_int, "$coop_dict", "@battle_state", coop_battle_state_abandoned),
-			(call_script, "script_coop_battle_slot_dict_name", ":slot"),
-			(dict_save, "$coop_dict", s41),
-			(call_script, "script_coop_battle_slot_set_in_progress", ":slot", 0),
-			(call_script, "script_coop_battle_slot_clear_ended", ":slot"),
-			(call_script, "script_coop_battle_broadcast_slot_closed", ":slot"),
-			(multiplayer_send_2_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_battle_rejected, 1),
-			(display_message, "@[BATTLE RESULTS] battle server lost -- slot freed, parties released."),
 			(dict_free, "$coop_dict"),
+			(display_message, "@[BATTLE RESULTS] battle server lost -- releasing the slot."),
+			(call_script, "script_coop_battle_slot_abort", ":slot", ":player_no"),
 		(else_try),
 			# Battle still running (in_progress poll) -- retry on next join
 			(dict_free, "$coop_dict"),
@@ -17015,7 +18087,9 @@ coop_scripts = [
 
        (try_begin),
            (eq, ":ok", 1),
+           (call_script, "script_coop_inv_restore_amounts", ":troop_no"),
            (call_script, "script_coop_save_character", ":player_no"),
+           (call_script, "script_coop_push_player_inventory", ":player_no"),
        (else_try),
            # Revert equipment slots 0-9 from the baseline dict. An absent key is a
            # pre-fix dict, not an empty slot: leave the live slot alone.
@@ -17054,6 +18128,7 @@ coop_scripts = [
                    (troop_set_inventory_slot, ":troop_no", ":slot", -1),
                (try_end),
            (try_end),
+           (call_script, "script_coop_inv_restore_amounts", ":troop_no"),
            # Re-push authoritative inventory so the client's view matches.
            (call_script, "script_coop_push_player_inventory", ":player_no"),
        (try_end),
@@ -17061,8 +18136,107 @@ coop_scripts = [
        (try_end),
    ]),
 
-   # Sends the player's 9 equipment slots to the client via coop_event_inv_troop_set_slot.
-   # Client stores in trp_temp_troop slots 0-8 (items) and 10-18 (modifiers).
+   # Re-derives every consumable slot's amount from the baseline char dict
+   # $coop_inv_base (loaded by the caller): troop_set_inventory_slot refills a
+   # stack, so a moved, partly eaten stack would otherwise come back full.
+   # A slot still holding its baseline item keeps that slot's amount; any
+   # other consumable slot takes the largest unclaimed baseline amount of the
+   # same item. Each baseline slot is claimed once. A baseline slot without
+   # an amount key (pre-feature dict) counts as full; a slot with no baseline
+   # counterpart is new and keeps the engine's full amount.
+   ("coop_inv_restore_amounts",
+   [
+       (store_script_param, ":troop_no", 1),
+       (dict_create, ":scratch"),
+
+       # Baseline per slot: item (-1 empty or claimed), amount (-1 = full).
+       (try_for_range, ":slot", 0, 106),
+           (assign, reg5, ":slot"),
+           (try_begin),
+               (lt, ":slot", 10),
+               (str_store_string, s12, "@char_itm_{reg5}"),
+               (str_store_string, s13, "@char_itm_amt_{reg5}"),
+           (else_try),
+               (str_store_string, s12, "@char_bag_{reg5}"),
+               (str_store_string, s13, "@char_bag_amt_{reg5}"),
+           (try_end),
+           (assign, ":bitem", -1),
+           (try_begin),
+               (dict_has_key, "$coop_inv_base", s12),
+               (dict_get_int, ":bitem", "$coop_inv_base", s12),
+           (try_end),
+           (assign, ":bamt", -1),
+           (try_begin),
+               (dict_has_key, "$coop_inv_base", s13),
+               (dict_get_int, ":bamt", "$coop_inv_base", s13),
+           (try_end),
+           (str_store_string, s12, "@inv_bitem_{reg5}"),
+           (dict_set_int, ":scratch", s12, ":bitem"),
+           (str_store_string, s12, "@inv_bamt_{reg5}"),
+           (dict_set_int, ":scratch", s12, ":bamt"),
+           (str_store_string, s12, "@inv_done_{reg5}"),
+           (dict_set_int, ":scratch", s12, 0),
+       (try_end),
+
+       # Pass 1: consumable slots still holding their own baseline item.
+       (try_for_range, ":slot", 0, 106),
+           (troop_get_inventory_slot, ":item", ":troop_no", ":slot"),
+           (gt, ":item", 0),
+           (troop_inventory_slot_get_item_max_amount, ":amt_max", ":troop_no", ":slot"),
+           (gt, ":amt_max", 1),
+           (assign, reg5, ":slot"),
+           (str_store_string, s12, "@inv_bitem_{reg5}"),
+           (dict_get_int, ":bitem", ":scratch", s12),
+           (eq, ":bitem", ":item"),
+           (dict_set_int, ":scratch", s12, -1),
+           (str_store_string, s12, "@inv_done_{reg5}"),
+           (dict_set_int, ":scratch", s12, 1),
+           (str_store_string, s12, "@inv_bamt_{reg5}"),
+           (dict_get_int, ":bamt", ":scratch", s12),
+           (ge, ":bamt", 0),
+           (troop_inventory_slot_set_item_amount, ":troop_no", ":slot", ":bamt"),
+       (try_end),
+
+       # Pass 2: remaining consumable slots claim the fullest unclaimed
+       # baseline stack of their item.
+       (try_for_range, ":slot", 0, 106),
+           (troop_get_inventory_slot, ":item", ":troop_no", ":slot"),
+           (gt, ":item", 0),
+           (troop_inventory_slot_get_item_max_amount, ":amt_max", ":troop_no", ":slot"),
+           (gt, ":amt_max", 1),
+           (assign, reg5, ":slot"),
+           (str_store_string, s12, "@inv_done_{reg5}"),
+           (dict_get_int, ":done", ":scratch", s12),
+           (eq, ":done", 0),
+           (assign, ":best_slot", -1),
+           (assign, ":best_amt", -1),
+           (try_for_range, ":bslot", 0, 106),
+               (assign, reg5, ":bslot"),
+               (str_store_string, s12, "@inv_bitem_{reg5}"),
+               (dict_get_int, ":bitem", ":scratch", s12),
+               (eq, ":bitem", ":item"),
+               (str_store_string, s12, "@inv_bamt_{reg5}"),
+               (dict_get_int, ":bamt", ":scratch", s12),
+               (try_begin),
+                   (lt, ":bamt", 0),
+                   (assign, ":bamt", ":amt_max"),
+               (try_end),
+               (gt, ":bamt", ":best_amt"),
+               (assign, ":best_slot", ":bslot"),
+               (assign, ":best_amt", ":bamt"),
+           (try_end),
+           (ge, ":best_slot", 0),
+           (assign, reg5, ":best_slot"),
+           (str_store_string, s12, "@inv_bitem_{reg5}"),
+           (dict_set_int, ":scratch", s12, -1),
+           (troop_inventory_slot_set_item_amount, ":troop_no", ":slot", ":best_amt"),
+       (try_end),
+
+       (dict_free, ":scratch"),
+   ]),
+
+   # Sends the player's 10 equipment slots to the client (ch125 ev 15, ev 66 for amounts);
+   # the client mirrors them into its close-diff snapshot slots 160-179.
    ("coop_send_equipment_to_client",
    [
        (store_script_param, ":player_no", 1),
@@ -17073,6 +18247,23 @@ coop_scripts = [
            (troop_get_inventory_slot, ":item", ":troop_no", ":slot"),
            (troop_get_inventory_slot_modifier, ":imod", ":troop_no", ":slot"),
            (multiplayer_send_4_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_equip_slot, ":slot", ":item", ":imod"),
+           (call_script, "script_coop_send_slot_amount", ":player_no", ":troop_no", ":slot"),
+       (try_end),
+   ]),
+
+   # Sends ev 66 (slot, amount) for a consumable slot: non-empty and max amount > 1.
+   ("coop_send_slot_amount",
+   [
+       (store_script_param, ":player_no", 1),
+       (store_script_param, ":troop_no", 2),
+       (store_script_param, ":slot", 3),
+       (troop_get_inventory_slot, ":item", ":troop_no", ":slot"),
+       (try_begin),
+           (gt, ":item", 0),
+           (troop_inventory_slot_get_item_max_amount, ":max_amount", ":troop_no", ":slot"),
+           (gt, ":max_amount", 1),
+           (troop_inventory_slot_get_item_amount, ":amount", ":troop_no", ":slot"),
+           (multiplayer_send_3_int_to_player, ":player_no", multiplayer_event_multiplayer_campaign_server_events, multiplayer_event_multiplayer_campaign_server_event_inv_slot_amount, ":slot", ":amount"),
        (try_end),
    ]),
 
@@ -17099,6 +18290,7 @@ coop_scripts = [
                    multiplayer_event_multiplayer_campaign_server_events,
                    multiplayer_event_multiplayer_campaign_server_event_inv_bag_slot,
                    ":slot", ":item", ":imod"),
+               (call_script, "script_coop_send_slot_amount", ":player_no", ":troop_no", ":slot"),
            (try_end),
        (try_end),
        (multiplayer_send_2_int_to_player, ":player_no",

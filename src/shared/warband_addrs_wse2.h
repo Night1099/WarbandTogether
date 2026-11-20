@@ -86,6 +86,9 @@ extern const addr_table *g_addrs;          /* pinned once at init */
 #define CAMP_ADDR_CAMPAIGN_TICK           0x466EB0  /* mbGame::frameMove -- __thiscall(game*, float delta) */
 #define CAMP_CAMPAIGN_TICK_PROLOGUE_SIZE  6         /* push ebp; mov ebp,esp; sub esp,0x24 */
 #define CAMP_CAMPAIGN_TICK_PROLOGUE_BYTES { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x24 }
+#define DED_ADDR_MISSION_FRAMEMOVE        0x497A50  /* mbMission::frameMove (PDB), battle dedicated -- the battle personality's per-frame hook */
+#define DED_MISSION_FRAMEMOVE_PROLOGUE_SIZE  9      /* push ebp; mov ebp,esp; sub esp,0x478 */
+#define DED_MISSION_FRAMEMOVE_PROLOGUE_BYTES { 0x55, 0x8B, 0xEC, 0x81, 0xEC, 0x78, 0x04, 0x00, 0x00 }
 #define CAMP_ADDR_AI_PATH_WALK_LIMIT      0x4ABE57  /* operand byte of cmp eax,6 @0x4ABE55 in mbParty::aiUpdateBehavior 0x4ABAB0 */
 
 /* =================================================================== */
@@ -282,15 +285,18 @@ extern const addr_table *g_addrs;          /* pinned once at init */
 #define CAMP_ADDR_GLOBAL_VARS_VEC 0x8D2A88
 #define CAMP_ADDR_GLOBAL_VARS_END 0x8D2A8C  /* m_globalVariables._Mylast */
 
-/* Troop array in campaign server (Fix H: troop_set_xp).
-   RE'd from addExperienceToTroop at 0x46B270 in dedicated_campaign.
-   m_experience at +0x164, m_level at +0x178 (same as client). */
-#define CAMP_OFF_TROOP_ARRAY     0x13D28    /* game + offset -> troop_array_ptr */
-#define CAMP_TROOP_STRIDE        0x978      /* sizeof(mbTroop) = 0x978 in this build (PDB-confirmed; no 0xFC8 variant exists -- audit b1) */
+/* Troop array, both dedicated exes (Fix H: troop_set_xp). RE'd from
+   mbGame::addExperienceToTroop (campaign 0x46B270, battle 0x487A90 -- same
+   offsets, verified live on the battle exe 2026-10-28). m_experience at
+   +0x164, m_level at +0x178 (same as client). */
+#define MBGAME_OFF_TROOP_ARRAY   0x13D28    /* game + offset -> troop_array_ptr */
+#define MBGAME_OFF_NUM_TROOPS    0x13D2C    /* mbGame::m_numTroops (right after m_troops) */
+#define MBTROOP_STRIDE           0x978      /* sizeof(mbTroop) = 0x978 in this build (PDB-confirmed; no 0xFC8 variant exists -- audit b1) */
+#define LEVEL_TABLE_ENTRIES      64
 #define CAMP_ADDR_LEVEL_TABLE         0x8C3040  /* g_levelTable -- int[64] (PDB ?g_levelTable@@3PAHA) */
-#define CAMP_LEVEL_TABLE_ENTRIES      64
 #define CAMP_ADDR_LEVEL_BOUNDARY_MULT 0x8C1AD4  /* rglConfig::Campaign::fLevelBoundaryMultiplier (float) */
-#define CAMP_OFF_NUM_TROOPS           0x13D2C   /* mbGame::m_numTroops (right after m_troops @0x13D28) */
+#define DED_ADDR_LEVEL_TABLE          0x8F8040  /* g_levelTable, battle dedicated (PDB) */
+#define DED_ADDR_LEVEL_BOUNDARY_MULT  0x8F6AD4  /* rglConfig::Campaign::fLevelBoundaryMultiplier, battle dedicated (PDB) */
 #define ADDR_META_MISSION_BASE   0xA476D8  /* g_metaMission -- mbMetaMission (0x50 bytes) */
 #define ADDR_TIME_SPEED_MULT     0xA44D0C  /* float: time_speed_multiplier (read-only constant) */
 #define ADDR_NUM_PLAYERS_LIMIT   0xA44D68  /* int: rglConfig::Network::iNumPlayersLimit */

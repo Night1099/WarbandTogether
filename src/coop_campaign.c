@@ -4,8 +4,6 @@
 #include <winsock2.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
-#include <stdlib.h>
 
 #include "warband_addrs_wse2.h"
 #include "hook.h"
@@ -13,10 +11,13 @@
 #include "coop_campaign.h"
 #include "battle_net.h"
 #include "battle_ipc.h"
-#include "wsedict.h"
+#include "campaign_ipc.h"
+#include "battle_end.h"
+#include "coop_config.h"
+#include "coop_gvars.h"
+#include "set_xp.h"
 #include "modglobals.h"
 #include "nettune.h"
-#include "xp.h"
 #include <shlobj.h>  /* SHGetFolderPathA */
 
 /* ------------------------------------------------------------------ */
@@ -62,30 +63,46 @@ static char        g_ini_path[MAX_PATH];  /* stashed for nettune_apply, called o
 /*  Module global variable indices -- resolved from variables.txt      */
 /* ------------------------------------------------------------------ */
 
-static int g_gvar_round_ended = -1;
-static int g_gvar_battle_started = -1;
-static int g_gvar_battle_slot  = -1;                     /* battle server: own slot id */
-static int g_gvar_slots_online = -1;                     /* campaign: online bitmask   */
-static int g_gvar_battle_ended_slot[IPC_MAX_BATTLE_SLOTS] = {-1, -1, -1, -1};
-static int g_gvar_in_progress_slot[IPC_MAX_BATTLE_SLOTS] = {-1, -1, -1, -1};
-static int g_gvar_mp_winner = -1;
-static int g_gvar_set_xp_go = -1;
-static int g_gvar_set_xp_troop = -1;
-static int g_gvar_set_xp_value = -1;
+static coop_gvars g_gv = COOP_GVARS_UNRESOLVED;
 
 /* ------------------------------------------------------------------ */
 /*  Battle slot state                                                  */
 /* ------------------------------------------------------------------ */
 
 static int   g_battle_slot = 0;                          /* COOP_BATTLE: pool slot from env */
-static void *g_ipc_peer_slot[IPC_MAX_BATTLE_SLOTS];      /* COOP_HOST: ENet peer per slot   */
+static ipc_slots g_ipc = { {NULL}, &g_gv.ipc, -1 };      /* COOP_HOST: peer per slot */
 
 /* ------------------------------------------------------------------ */
 /*  Hook state                                                        */
 /* ------------------------------------------------------------------ */
 
+/* Per-personality engine sites the frame hook and the set_xp consumer
+   use. The campaign hooks mbGame::frameMove; a battle server runs every
+   frame inside mbMission::frameMove. Both are main-thread, between script
+   ticks, so a consumer there never races the engine's own troop writes. */
+typedef struct personality_sites {
+    const char *frame_fn_name;
+    DWORD frame_fn;
+    int   frame_prologue_size;
+    BYTE  frame_prologue[16];
+    DWORD level_table;
+    DWORD level_boundary_mult;
+} personality_sites;
+
+static const personality_sites g_sites_campaign = {
+    "campaign mbGame::frameMove", CAMP_ADDR_CAMPAIGN_TICK,
+    CAMP_CAMPAIGN_TICK_PROLOGUE_SIZE, CAMP_CAMPAIGN_TICK_PROLOGUE_BYTES,
+    CAMP_ADDR_LEVEL_TABLE, CAMP_ADDR_LEVEL_BOUNDARY_MULT,
+};
+static const personality_sites g_sites_battle = {
+    "battle mbMission::frameMove", DED_ADDR_MISSION_FRAMEMOVE,
+    DED_MISSION_FRAMEMOVE_PROLOGUE_SIZE, DED_MISSION_FRAMEMOVE_PROLOGUE_BYTES,
+    DED_ADDR_LEVEL_TABLE, DED_ADDR_LEVEL_BOUNDARY_MULT,
+};
+static const personality_sites *g_sites = NULL;   /* pinned once at init */
+
 static DWORD g_fm_trampoline = 0;
-static BYTE  g_fm_saved[CAMP_CAMPAIGN_TICK_PROLOGUE_SIZE];
+static BYTE  g_fm_saved[16];
 
 static DWORD g_mask_refresh_tick = 0;   /* IPC-thread mask republish cadence */
 
@@ -97,11 +114,10 @@ static void coop_on_frame(void);
 static void coop_post_frame(void);
 static void coop_on_ipc_packet(void *peer, const uint8_t *data, int len);
 static void coop_on_ipc_event(void *peer, int connected);
-static void update_slots_online_mask(void);
 
 /* ------------------------------------------------------------------ */
-/*  FrameMove detour -- installed at the campaign exe's mbGame::frameMove   */
-/*  (CAMP_ADDR_CAMPAIGN_TICK). Runs both coop callbacks between ticks, then */
+/*  FrameMove detour -- installed at the personality's frame function       */
+/*  (g_sites->frame_fn). Runs both coop callbacks between ticks, then       */
 /*  jmp's into the trampoline so the hooked function's own return goes      */
 /*  straight back to the engine caller.                                     */
 /* ------------------------------------------------------------------ */
@@ -167,7 +183,7 @@ static DWORD WINAPI ipc_thread_func(LPVOID param) {
            processed before the globals vector exists would otherwise be
            lost for good (mask writes are event-driven). */
         if (g_coop_mode == COOP_HOST && (++g_mask_refresh_tick & 63) == 0)
-            update_slots_online_mask();
+            ipc_slots_publish_mask(&g_ipc);
         Sleep(16);  /* ~60Hz */
     }
     return 0;
@@ -201,54 +217,32 @@ static void coop_on_frame(void) {
 /*  via globals.                                                        */
 /* ------------------------------------------------------------------ */
 
+static int engine_troops(set_xp_troops *out) {
+    void *game = wb_cur_game();
+    if (!game) return 0;
+    out->arr = *(char **)((char *)game + MBGAME_OFF_TROOP_ARRAY);
+    out->count = *(int *)((char *)game + MBGAME_OFF_NUM_TROOPS);
+    out->level_table = (const int *)REBASE(g_sites->level_table);
+    out->boundary_mult = *(float *)REBASE(g_sites->level_boundary_mult);
+    return 1;
+}
+
 static void coop_post_frame(void) {
     /* --- troop_set_xp: authoritative XP write (Fix H) ---
        The module script requests a direct mbTroop.m_experience write by
        setting $g_coop_set_xp_go = 1 (+ troop/value globals) during its
-       tick; we consume it here, after that frameMove returns, so the
+       tick; we consume it here, at the entry of the next frame, so the
        script's global writes are already visible and every troop_get_xp
-       from the next frame on sees the corrected value.
+       from that frame on sees the corrected value. Both personalities:
+       a battle server's char load queues the same request.
 
        Known accepted drift: a coop_save_character in the SAME frame as
        the requesting script (the phase-2 save in player_joined) still
        reads the stale base XP — the DLL cannot call module scripts to
-       re-trigger the save post-write.  The next save (300 s autosave or
-       exit) captures the corrected total, which bounds the drift. */
-    if (g_coop_mode != COOP_HOST) return;
-    if (g_gvar_set_xp_go < 0) return;
-
+       re-trigger the save post-write.  The next save (autosave every 300
+       campaign hours, or exit) captures the corrected total, which bounds the drift. */
     __try {
-        int go = modglobals_get_int(g_gvar_set_xp_go, 0);
-        if (go == 1) {
-            int troop_id = modglobals_get_int(g_gvar_set_xp_troop, 0);
-            int xp_value = modglobals_get_int(g_gvar_set_xp_value, 0);
-            void *game = wb_cur_game();
-            if (game) {
-                /* Troop array: game + CAMP_OFF_TROOP_ARRAY -> troop_array_ptr.
-                   Each troop struct is TROOP_STRIDE bytes.
-                   m_experience at +0x164, m_level at +0x178 (same as client). */
-                char *troop_arr = *(char **)((char *)game + CAMP_OFF_TROOP_ARRAY);
-                int num_troops  = *(int *)((char *)game + CAMP_OFF_NUM_TROOPS);
-                if (troop_arr && troop_id >= 0 && troop_id < num_troops) {
-                    char *troop = troop_arr + (unsigned)troop_id * CAMP_TROOP_STRIDE;
-                    int old_xp = *(int *)(troop + 0x164);
-                    const int *level_table = (const int *)REBASE(CAMP_ADDR_LEVEL_TABLE);
-                    float mult = *(float *)REBASE(CAMP_ADDR_LEVEL_BOUNDARY_MULT);
-                    *(int *)(troop + 0x164) = xp_value;
-                    /* Level only -- per-level point awards intentionally NOT granted here:
-                       points come from the saved character dict, not from this write. */
-                    *(int *)(troop + 0x178) = coop_level_from_xp(level_table,
-                                                                 CAMP_LEVEL_TABLE_ENTRIES,
-                                                                 mult, xp_value);
-                    coop_log("[set_xp] troop=%d old_xp=%d new_xp=%d level=%d\n",
-                             troop_id, old_xp, xp_value, *(int *)(troop + 0x178));
-                } else if (troop_arr) {
-                    coop_log("[set_xp] REJECT troop=%d out of range (num_troops=%d)\n",
-                             troop_id, num_troops);
-                }
-            }
-            modglobals_set(g_gvar_set_xp_go, 0);
-        }
+        coop_set_xp_consume(&g_gv, engine_troops);
     } __except(EXCEPTION_EXECUTE_HANDLER) {
         /* Access violation during global/troop read — vector may be reallocating */
     }
@@ -269,10 +263,7 @@ static void coop_load_ini(const char *dll_dir) {
     {
         char exe_name[MAX_PATH];
         GetModuleFileNameA(NULL, exe_name, MAX_PATH);
-        if (strstr(exe_name, "dedicated_campaign"))
-            g_coop_mode = COOP_HOST;
-        else
-            g_coop_mode = COOP_BATTLE;
+        g_coop_mode = coop_mode_from_exe(exe_name);
     }
 
     g_port = GetPrivateProfileIntA("Coop", "Port", 7240, ini_path);
@@ -282,17 +273,15 @@ static void coop_load_ini(const char *dll_dir) {
 
     if (g_coop_mode == COOP_BATTLE) {
         char slot_str[8];
-        if (GetEnvironmentVariableA("COOP_BATTLE_SLOT", slot_str, sizeof(slot_str)) > 0)
-            g_battle_slot = atoi(slot_str);
-        if (g_battle_slot < 0 || g_battle_slot >= IPC_MAX_BATTLE_SLOTS)
-            g_battle_slot = 0;
+        int set = GetEnvironmentVariableA("COOP_BATTLE_SLOT", slot_str, sizeof(slot_str)) > 0;
+        g_battle_slot = coop_battle_slot_from_env(set ? slot_str : NULL);
         coop_log("battle slot: %d (COOP_BATTLE_SLOT env)\n", g_battle_slot);
     }
 
     if (g_coop_mode == COOP_HOST) {
         char reveal_str[8];
-        if (GetEnvironmentVariableA("COOP_DEBUG_REVEAL", reveal_str, sizeof(reveal_str)) > 0)
-            g_debug_reveal = atoi(reveal_str) != 0;
+        int set = GetEnvironmentVariableA("COOP_DEBUG_REVEAL", reveal_str, sizeof(reveal_str)) > 0;
+        g_debug_reveal = coop_debug_reveal_from_env(set ? reveal_str : NULL);
     }
 
     coop_log("config: mode=%s port=%d host=%s module=%s password=%s debug_reveal=%d\n",
@@ -306,91 +295,21 @@ static void coop_load_ini(const char *dll_dir) {
 /* ------------------------------------------------------------------ */
 
 static void resolve_battle_global_indices(void) {
-    enum { N_FIXED = 8, N_ALL = N_FIXED + 2 * IPC_MAX_BATTLE_SLOTS };
-    char path[MAX_PATH];
-    char slot_names[2 * IPC_MAX_BATTLE_SLOTS][40];
-    const char *names[N_ALL];
-    int *dest[N_ALL];
-    int idx[N_ALL];
-    int n = 0, i;
-
-    GetModuleFileNameA(NULL, path, MAX_PATH);
-    { char *s = strrchr(path, '\\'); if (s) s[1] = '\0'; }
-    lstrcatA(path, "Modules\\");
-    lstrcatA(path, g_module_name);
-    lstrcatA(path, "\\variables.txt");
-
-    names[n] = "g_round_ended";              dest[n] = &g_gvar_round_ended;    n++;
-    names[n] = "coop_battle_started";        dest[n] = &g_gvar_battle_started; n++;
-    names[n] = "coop_battle_slot";           dest[n] = &g_gvar_battle_slot;    n++;
-    names[n] = "g_coop_battle_slots_online"; dest[n] = &g_gvar_slots_online;   n++;
-    names[n] = "coop_winner_team";           dest[n] = &g_gvar_mp_winner;      n++;
-    names[n] = "g_coop_set_xp_go";           dest[n] = &g_gvar_set_xp_go;      n++;
-    names[n] = "g_coop_set_xp_troop";        dest[n] = &g_gvar_set_xp_troop;   n++;
-    names[n] = "g_coop_set_xp_value";        dest[n] = &g_gvar_set_xp_value;   n++;
-    for (i = 0; i < IPC_MAX_BATTLE_SLOTS; i++) {
-        _snprintf(slot_names[2*i], sizeof(slot_names[0]),
-                  "g_coop_battle_ended_%d", i);
-        names[n] = slot_names[2*i];   dest[n] = &g_gvar_battle_ended_slot[i]; n++;
-        _snprintf(slot_names[2*i+1], sizeof(slot_names[0]),
-                  "g_coop_battle_in_progress_%d", i);
-        names[n] = slot_names[2*i+1]; dest[n] = &g_gvar_in_progress_slot[i];  n++;
-    }
-
-    modglobals_resolve(path, names, idx, n);
-    for (i = 0; i < n; i++) *dest[i] = idx[i];
-
-    coop_log("battle globals: round_ended=%d battle_started=%d mp_winner=%d battle_slot=%d slots_online=%d\n",
-             g_gvar_round_ended, g_gvar_battle_started, g_gvar_mp_winner,
-             g_gvar_battle_slot, g_gvar_slots_online);
-    for (i = 0; i < IPC_MAX_BATTLE_SLOTS; i++)
-        coop_log("slot %d: battle_ended=%d in_progress=%d\n",
-                 i, g_gvar_battle_ended_slot[i], g_gvar_in_progress_slot[i]);
-    coop_log("set_xp globals: go=%d troop=%d value=%d\n",
-             g_gvar_set_xp_go, g_gvar_set_xp_troop, g_gvar_set_xp_value);
-}
-
-/* ------------------------------------------------------------------ */
-/*  WSE dict directory helper                                          */
-/* ------------------------------------------------------------------ */
-
-static void get_wse_dict_dir(char *out, int out_size) {
-    GetModuleFileNameA(NULL, out, out_size);
-    { char *s = strrchr(out, '\\'); if (s) s[1] = '\0'; }
-    lstrcatA(out, "WSE\\");
-    lstrcatA(out, g_module_name);
-    lstrcatA(out, "\\");
+    char exe[MAX_PATH], path[MAX_PATH];
+    GetModuleFileNameA(NULL, exe, MAX_PATH);
+    coop_variables_path(path, MAX_PATH, exe, g_module_name);
+    coop_gvars_resolve(path, &g_gv);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Server config dict writing                                        */
 /* ------------------------------------------------------------------ */
 
-/* One file per personality: every server in a pool writes its own
- * environment (debug_reveal is campaign-only), so a shared file would let
- * the last writer decide the setting another process reads.
- *
- * The file name and keys are spelled the way the engine resolves the
- * module's quick strings: every '_' in an "@name" string becomes ' ' when
- * quick_strings.txt is loaded, so coop_apply_server_cfg opens
- * "coop server cfg campaign" and reads "server password". */
 static void write_server_cfg_dict(void) {
-    char dir[MAX_PATH], path[MAX_PATH];
-    const char *name = g_coop_mode == COOP_HOST ? "coop server cfg campaign"
-                                                : "coop server cfg battle";
-    wsedict_t *d;
-    get_wse_dict_dir(dir, sizeof(dir));
-    _snprintf(path, sizeof(path), "%s%s.wsedict", dir, name);
-    d = wsedict_create();
-    if (!d) return;
-    wsedict_set_str(d, "server password", g_server_password);
-    wsedict_set_int(d, "debug reveal", g_debug_reveal);
-    if (wsedict_save(d, path) == 0)
-        coop_log("server cfg dict written (%s, password=%s, debug_reveal=%d)\n",
-                 path, g_server_password[0] ? "set" : "none", g_debug_reveal);
-    else
-        coop_log("server cfg dict WRITE FAILED (%s)\n", path);
-    wsedict_free(d);
+    char exe[MAX_PATH], dir[MAX_PATH];
+    GetModuleFileNameA(NULL, exe, MAX_PATH);
+    coop_wse_dict_dir(dir, MAX_PATH, exe, g_module_name);
+    coop_write_server_cfg(dir, g_coop_mode, g_server_password, g_debug_reveal);
 }
 
 /* ------------------------------------------------------------------ */
@@ -401,7 +320,7 @@ static void battle_collect_and_save(void) {
     int winner;
     int player_count = 0;
 
-    winner = modglobals_get_int(g_gvar_mp_winner, 0);
+    winner = modglobals_get_int(g_gv.mp_winner, 0);
 
     coop_log("[battle] round ended: winner=%d\n", winner);
 
@@ -423,15 +342,8 @@ static void battle_collect_and_save(void) {
 
     /* Send IPC signal to campaign server */
     {
-        uint8_t buf[1 + sizeof(battle_end_signal_t)];
-        battle_end_signal_t sig;
-        int n;
-        memset(&sig, 0, sizeof(sig));
-        sig.slot = (uint8_t)g_battle_slot;
-        sig.winner = (uint8_t)winner;
-        sig.player_count = player_count;
-        n = pkt_write(buf, PKT_BATTLE_END, &sig, sizeof(sig));
-        bnet_send(buf, n);
+        uint8_t buf[PKT_HDR_SIZE + sizeof(battle_end_signal_t)];
+        bnet_send(buf, battle_end_build(buf, g_battle_slot, winner, player_count));
         coop_log("[battle] sent PKT_BATTLE_END: winner=%d players=%d\n",
                  winner, player_count);
     }
@@ -443,8 +355,7 @@ static void battle_collect_and_save(void) {
 
 static HANDLE g_battle_poll_thread = NULL;
 static volatile LONG g_battle_poll_running = 0;
-static int g_battle_save_done = 0;
-static __int64 g_prev_battle_started = 0;
+static battle_end_edge g_battle_end_edge = {0, 0};
 
 /* Engine function: mbBasicGame::getGlobalVariable(int index) -> __int64
    __thiscall: this in ECX. Use __fastcall(this, edx_unused, index) in C. */
@@ -453,12 +364,8 @@ typedef __int64 (__fastcall *getGlobalVar_fn)(void *, void *, int);
 static void battle_on_ipc_event(void *peer, int connected) {
     (void)peer;
     if (connected) {
-        uint8_t buf[1 + sizeof(battle_hello_t)];
-        battle_hello_t hello;
-        int n;
-        hello.slot = (uint8_t)g_battle_slot;
-        n = pkt_write(buf, PKT_BATTLE_HELLO, &hello, sizeof(hello));
-        bnet_send(buf, n);
+        uint8_t buf[PKT_HDR_SIZE + sizeof(battle_hello_t)];
+        bnet_send(buf, battle_hello_build(buf, g_battle_slot));
         coop_log("[battle] IPC up, sent HELLO slot=%d\n", g_battle_slot);
     }
 }
@@ -481,29 +388,17 @@ static DWORD WINAPI battle_poll_thread_func(LPVOID param) {
         __try {
             /* Publish our slot for module dict-name derivation. Idempotent;
                the vector may be reallocated on mission restart (SEH-guarded). */
-            modglobals_set(g_gvar_battle_slot, g_battle_slot);
-            modglobals_get(g_gvar_battle_started, &battle_started);
+            modglobals_set(g_gv.battle_slot, g_battle_slot);
+            modglobals_get(g_gv.battle_started, &battle_started);
         } __except(EXCEPTION_EXECUTE_HANDLER) {
             Sleep(100);
             continue;
         }
 
-        if (battle_started == 1 && g_prev_battle_started != 1) {
-            g_battle_save_done = 0;
-            coop_log("[battle] battle_started -> 1\n");
-        }
-
-        /* Edge detect: battle_started -> -1 means coop_copy_parties_to_file_mp
-           has finished dict_save of @coop_battle. The dict is on disk, so we can
-           now collect DLL-side data (per-player char XP) and send PKT_BATTLE_END
-           without a race against the module save. */
-        if (battle_started == -1 && g_prev_battle_started != -1 && !g_battle_save_done) {
-            coop_log("[battle] battle_started -> -1 (module save complete), collecting data...\n");
+        /* battle_started -> -1: coop_copy_parties_to_file_mp has finished the
+           dict_save of @coop_battle, so PKT_BATTLE_END cannot race the module save. */
+        if (battle_end_edge_step(&g_battle_end_edge, battle_started))
             battle_collect_and_save();
-            g_battle_save_done = 1;
-        }
-
-        g_prev_battle_started = battle_started;
 
         bnet_poll();
         {
@@ -524,20 +419,18 @@ static DWORD WINAPI battle_poll_thread_func(LPVOID param) {
 /* ------------------------------------------------------------------ */
 
 static void install_hooks(void) {
-    /* Campaign-exe mbGame::frameMove (PDB-derived; the client VA
+    /* The personality's PDB-derived frame function (the client VA
        ADDR_CAMPAIGN_TICK is a DIFFERENT binary and must never be
        patched here — see findings "B2 fix addresses"). */
-    static const BYTE fm_expected[CAMP_CAMPAIGN_TICK_PROLOGUE_SIZE] =
-        CAMP_CAMPAIGN_TICK_PROLOGUE_BYTES;
-    if (!hook_install_verified(REBASE(CAMP_ADDR_CAMPAIGN_TICK), framemove_detour,
-                               CAMP_CAMPAIGN_TICK_PROLOGUE_SIZE, fm_expected,
+    if (!hook_install_verified(REBASE(g_sites->frame_fn), framemove_detour,
+                               g_sites->frame_prologue_size, g_sites->frame_prologue,
                                g_fm_saved, &g_fm_trampoline)) {
-        coop_log("framemove hook REFUSED (byte mismatch) — per-frame coop "
-                 "processing (set_xp, deferred commands) is OFFLINE\n");
+        coop_log("framemove hook REFUSED (byte mismatch) at %s — per-frame coop "
+                 "processing (set_xp) is OFFLINE\n", g_sites->frame_fn_name);
         return;
     }
-    coop_log("framemove hook installed at campaign mbGame::frameMove 0x%08X\n",
-             REBASE(CAMP_ADDR_CAMPAIGN_TICK));
+    coop_log("framemove hook installed at %s 0x%08X\n",
+             g_sites->frame_fn_name, REBASE(g_sites->frame_fn));
 }
 
 /* ------------------------------------------------------------------ */
@@ -564,68 +457,12 @@ static void install_patches(void) {
 /*  IPC packet handler (campaign receives from battle server)          */
 /* ------------------------------------------------------------------ */
 
-static void update_slots_online_mask(void) {
-    int i, mask = 0;
-    static int s_last_logged_mask = -1;
-    for (i = 0; i < IPC_MAX_BATTLE_SLOTS; i++)
-        if (g_ipc_peer_slot[i]) mask |= (1 << i);
-    modglobals_set(g_gvar_slots_online, mask);
-    /* Called ~1/s from the net thread as a republish -- log changes only */
-    if (mask != s_last_logged_mask) {
-        coop_log("[ipc] slots online mask = 0x%X\n", mask);
-        s_last_logged_mask = mask;
-    }
-}
-
 static void coop_on_ipc_event(void *peer, int connected) {
-    int i;
-    if (connected) return;   /* slot is learned from HELLO, not CONNECT */
-    for (i = 0; i < IPC_MAX_BATTLE_SLOTS; i++) {
-        if (g_ipc_peer_slot[i] == peer) {
-            g_ipc_peer_slot[i] = NULL;
-            coop_log("[ipc] battle slot %d disconnected\n", i);
-            if (modglobals_get_int(g_gvar_in_progress_slot[i], 0) == 1) {
-                modglobals_set(g_gvar_battle_ended_slot[i], 1);
-                coop_log("[ipc] slot %d was in progress -> flagged ended (abort)\n", i);
-            }
-        }
-    }
-    update_slots_online_mask();
+    ipc_slots_on_event(&g_ipc, peer, connected);
 }
 
 static void coop_on_ipc_packet(void *peer, const uint8_t *data, int len) {
-    if (len < 1) return;
-    switch (data[0]) {
-    case PKT_BATTLE_HELLO: {
-        battle_hello_t hello;
-        if (pkt_read(data, len, &hello, sizeof(hello)) &&
-            hello.slot < IPC_MAX_BATTLE_SLOTS) {
-            g_ipc_peer_slot[hello.slot] = peer;
-            coop_log("[ipc] HELLO: battle slot %d online\n", hello.slot);
-            update_slots_online_mask();
-        } else {
-            coop_log("[ipc] bad HELLO (len=%d)\n", len);
-        }
-        break;
-    }
-    case PKT_BATTLE_END: {
-        battle_end_signal_t sig;
-        if (pkt_read(data, len, &sig, sizeof(sig)) &&
-            sig.slot < IPC_MAX_BATTLE_SLOTS) {
-            coop_log("[ipc] PKT_BATTLE_END: slot=%d winner=%d atk_cas=%d def_cas=%d players=%d\n",
-                     sig.slot, sig.winner, sig.attacker_casualties,
-                     sig.defender_casualties, sig.player_count);
-            modglobals_set(g_gvar_battle_ended_slot[sig.slot], 1);
-            coop_log("[ipc] set $g_coop_battle_ended_%d = 1\n", sig.slot);
-        } else {
-            coop_log("[ipc] PKT_BATTLE_END bad/short (%d bytes)\n", len);
-        }
-        break;
-    }
-    default:
-        coop_log("[ipc] unknown packet type=0x%02X len=%d\n", data[0], len);
-        break;
-    }
+    ipc_slots_on_packet(&g_ipc, peer, data, len);
 }
 
 /* ------------------------------------------------------------------ */
@@ -638,7 +475,7 @@ void campaign_init_from_ini(const char *dll_dir) {
     {
         char exe_name[MAX_PATH];
         GetModuleFileNameA(NULL, exe_name, MAX_PATH);
-        if (!strstr(exe_name, "dedicated")) {
+        if (!coop_is_dedicated_exe(exe_name)) {
             OutputDebugStringA("[CoopWSE] non-dedicated process, plugin inert");
             return;
         }
@@ -652,6 +489,7 @@ void campaign_init_from_ini(const char *dll_dir) {
         g_aslr_slide = (DWORD)exe - WSE2_PREFERRED_BASE;
     }
     g_addrs = (g_coop_mode == COOP_HOST) ? &g_addrs_campaign : &g_addrs_battle;
+    g_sites = (g_coop_mode == COOP_HOST) ? &g_sites_campaign : &g_sites_battle;
 
     g_log = fopen(g_coop_mode == COOP_HOST ? "warband_coop_host.log"
                                            : "warband_coop_battle.log", "w");
@@ -674,11 +512,7 @@ void campaign_init_from_ini(const char *dll_dir) {
     /* Write server config dict (both campaign and battle personalities) */
     write_server_cfg_dict();
 
-    /* Hooks and patches use campaign-exe PDB addresses; the battle exe is a
-       different binary with its own layout -- skip all hooks for COOP_BATTLE.
-       Battle end detection uses a polling thread instead (no engine hook needed). */
-    if (g_coop_mode != COOP_BATTLE)
-        install_hooks();
+    install_hooks();
 
     if (g_coop_mode == COOP_HOST) {
         install_patches();
@@ -701,6 +535,9 @@ void campaign_shutdown(void) {
     stop_ipc_thread();
     bnet_shutdown();
 
+    if (g_fm_trampoline)
+        hook_remove(REBASE(g_sites->frame_fn), g_fm_saved, g_sites->frame_prologue_size);
+
     if (g_coop_mode == COOP_BATTLE) {
         InterlockedExchange(&g_battle_poll_running, 0);
         if (g_battle_poll_thread) {
@@ -716,9 +553,6 @@ void campaign_shutdown(void) {
         return;
     }
 
-    /* framemove_detour is installed at CAMP_ADDR_CAMPAIGN_TICK (see install_hooks) */
-    if (g_fm_trampoline)
-        hook_remove(REBASE(CAMP_ADDR_CAMPAIGN_TICK), g_fm_saved, CAMP_CAMPAIGN_TICK_PROLOGUE_SIZE);
     if (g_log) {
         coop_log("warband_coop unloaded\n");
         fclose(g_log);

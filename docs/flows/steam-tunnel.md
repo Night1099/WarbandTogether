@@ -2,12 +2,12 @@
 
 **Status:** AUDITED (new subsystem — no native counterpart, so the audit
 table records engine-interaction ground truth instead of ours-vs-native)
-**Validated against commit:** `7161f85` (doc refresh 2026-09-21: all
-`steam_tunnel.c` / `steam_flat.c` anchors re-verified unchanged since
-`2923381`; narrative adds the auto-join driver's reuse as the campaign
-return hop after a local visit (`4676755`, runtime-verified 2026-09-19)
-and a dedicated battle; runtime-verified tunnel behavior unchanged since
-`09da2f7`). Prior stamp `2923381` (line anchors re-verified in full
+**Source anchors audited at** `f2a639e` (not runtime-validated; 2026-11-18: every
+anchor, symbol, ini key and commit re-checked; `steam_tunnel.c` /
+`steam_flat.c` unchanged since `7161f85`; seam-file names and the
+server-cfg retry gate refreshed; runtime-verified tunnel behavior
+unchanged since `09da2f7`). **Validated against commit:** `7161f85` (2026-09-21, return
+hop `4676755`). Prior stamp `2923381` (line anchors re-verified in full
 static doc audit 2026-08-30; runtime-verified behavior unchanged since
 `5ccf502`) -- prior stamp `5ccf502` (phase-5 chain/lobby invites +
 auto-join; all runtime gates 1-12 passed 2026-08-23/24 incl. LAN
@@ -42,12 +42,12 @@ JOINER game (engine mbnet)          HOST game client (bridge)      HOST dedicate
   Steam up to 120 s (then exits quietly — invites dead that session),
   and idles pumping callbacks so a Join Game invite can arrive. OFF
   touches no sockets, publishes no client verdict, and never re-aims
-  `g_host_ip` — but it DOES run the role-session preamble
+  `g_cfg.host_ip` — but it DOES run the role-session preamble
   (`InitRelayNetworkAccess` relay warmup) and the 20 Hz
   `SteamAPI_RunCallbacks` pump process-wide for every Steam player.
   A `[Steam]` config error still means no thread at all.
 - **Client proxy** exposes loopback listeners on the real ports and
-  re-aims `g_host_ip` to 127.0.0.1 (reversible; also gates browser
+  re-aims `g_cfg.host_ip` (`host_ip_reaim`, `asi_publish.c`) to 127.0.0.1 (reversible; also gates browser
   injection). Tri-state PENDING/UP/DOWN via
   `steam_tunnel_client_state()`; 90s PENDING watchdog so a hung Steam
   init can't hold injection forever.
@@ -124,7 +124,8 @@ JOINER game (engine mbnet)          HOST game client (bridge)      HOST dedicate
   armed-bit handshake fires unless the invite carried `:pw` and the
   joiner has no local `[Coop] Password=` (`steam_autojoin_verdict` —
   that case stays notify-only, gate 10). A `mbGame::frameMove` hook
-  (`ADDR_FRAMEMOVE` 0x483340, in `coop.c`) owns all engine writes:
+  (`ADDR_FRAMEMOVE` 0x483340, hooked in `coop.c`, driven by
+  `autojoin_step` in `autojoin.c`) owns all engine writes:
   opcode-3415-style stores (`m_storedAddress`/`m_storedPassword` via
   `rglString::operator=`, `m_switchingModule` + `m_connectToServer`=1),
   forced navigation from dead-zone screens via mbStartingWindow's
@@ -139,7 +140,7 @@ JOINER game (engine mbnet)          HOST game client (bridge)      HOST dedicate
   stale-flag bounce, gate 11). With no `[Steam]` keys the hook idles
   (gate 12). The same driver is the ASI's **campaign return hop**: any
   mission a campaign client ends at gameType 4 drops the connection, so
-  `arm_campaign_return` (`coop.c:189`) arms the hook at the campaign
+  `arm_campaign_return` (`coop.c:127`) arms the hook at the campaign
   server's address -- TUNNEL kind while the client proxy is UP (a
   mid-wait tunnel death aborts the join), LOCAL otherwise -- after a
   dedicated battle (ch127 ev 55, `e7eb400`) and after a local visit
@@ -157,18 +158,18 @@ wire (ch125/49/126/127) or the Steam connect string (`:pw` is a flag):
 ```
 coop.ini [Coop] Password=  (host game dir, max 47 chars)
   -> CoopWSEPlugin coop_load_ini -> WSE/<module>/"coop server cfg <campaign|battle>.wsedict"
-     {"server password"} (write_server_cfg_dict, BOTH dedicated
+     {"server password"} (coop_write_server_cfg in coop_config.c, BOTH dedicated
      personalities, ~+3 s: winmm loader sleeps 3 s before plugin load;
      spaces, not underscores -- the module's @strings lose their
      underscores at load)
   -> module coop_apply_server_cfg: 0.5 s campaign trigger + battle
-     template start hook retry until dict_load_file succeeds (latch
-     AFTER load -- an early tick must not disarm), then
+     template start hook retry until the `server password` key loads
+     (latch on `dict_has_key` -- an early tick must not disarm), then
      server_set_password
 ```
 
 Joiner side: the injected row's `m_passworded` (+0x158) has **one
-writer** — `(steam_tunnel_invite_pw() || g_password[0])` — because the
+writer** — `(steam_tunnel_invite_pw() || g_cfg.password[0])` — because the
 engine's ping-reply path always constructs fresh rows (RE Q6, no
 in-place refresh). There is **no native password dialog** (RE Q7): the
 browser's always-present password textbox is the entry point for the
@@ -192,7 +193,7 @@ the direct-connect arm.
 | 7 | Callback enqueue (any-thread) | `src/asi/steam_tunnel.c` | 282 | `steam_on_status_changed` |
 | 8 | 20 Hz RunCallbacks pump | `src/asi/steam_tunnel.c` | 1166 | `steam_pump_callbacks` |
 | 9 | SEH-guarded Steam-side teardown | `src/asi/steam_tunnel.c` | 881 | `steam_steamside_cleanup` |
-| 10 | Proxy state for coop.c (re-aim + inject gate) | `src/asi/steam_tunnel.c` | 234 | `steam_tunnel_client_state` |
+| 10 | Proxy state for the re-aim (`coop.c` -> `asi_publish.c` `host_ip_reaim`) and the inject gate (`browser_row.c` `browser_inject_step`) | `src/asi/steam_tunnel.c` | 234 | `steam_tunnel_client_state` |
 
 ## State & events
 

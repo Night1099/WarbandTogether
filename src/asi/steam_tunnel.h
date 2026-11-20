@@ -114,7 +114,7 @@ void steam_tunnel_start(const steam_cfg_t *cfg);
 
 /* 1 while the client proxy is fully live (all listeners bound, relay loop
    running); drops back to 0 if the tunnel dies. coop.c polls this to swap
-   g_host_ip between 127.0.0.1 and the configured LAN address. */
+   g_cfg.host_ip between 127.0.0.1 and the configured LAN address. */
 int steam_tunnel_client_is_up(void);
 
 /* STEAM_CLI_* -- the same verdict as a tri-state, so a consumer that can

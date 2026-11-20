@@ -214,7 +214,7 @@ game_menus = [
            (scene_set_slot, ":cur_place", slot_scene_visited, 1),
          (try_end),
          
-         (call_script, "script_get_player_party_morale_values"),
+         (call_script, "script_get_player_party_morale_values", "p_main_party", "trp_player", "$g_player_debt_to_party_members"),
          (party_set_morale, "p_main_party", reg0),
        ]
 	   ),
@@ -2055,7 +2055,11 @@ game_menus = [
    "{s1}",
    "none",
    [
-     (call_script, "script_get_player_party_morale_values"),     
+     (call_script, "script_coop_my_party"),
+     (assign, ":party_no", reg0),
+     (call_script, "script_coop_my_troop"),
+     (assign, ":troop_no", reg0),
+     (call_script, "script_get_player_party_morale_values", ":party_no", ":troop_no", "$g_player_debt_to_party_members"),
 
      (assign, ":target_morale", reg0),
      (assign, reg1, "$g_player_party_morale_modifier_party_size"),
@@ -2097,7 +2101,7 @@ game_menus = [
        (str_store_string, s6, "str_space"),
      (try_end),
  
-     (party_get_morale, reg5, "p_main_party"),
+     (party_get_morale, reg5, ":party_no"),
      (store_sub, reg4, reg5, ":target_morale"),
      (try_begin),
        (gt, reg4, 0),
@@ -4872,7 +4876,7 @@ game_menus = [
 			(call_script, "script_battle_political_consequences", "p_main_party", "$g_enemy_party"),
 		  (try_end),
 		  
-          (call_script, "script_loot_player_items", "$g_enemy_party"),
+          (call_script, "script_loot_player_items", "$g_enemy_party", "trp_player"),
 
           (assign, "$g_move_heroes", 0),
           (party_clear, "p_temp_party"),
@@ -4881,7 +4885,7 @@ game_menus = [
           (distribute_party_among_party_group, "p_temp_party", "$g_enemy_party"),
         
           (assign, "$g_prison_heroes", 1),
-          (call_script, "script_party_remove_all_companions", "p_main_party"),
+          (call_script, "script_party_remove_all_companions", "p_main_party", "$g_enemy_party"),
           (assign, "$g_prison_heroes", 0),
           (assign, "$g_move_heroes", 1),
           (call_script, "script_party_remove_all_prisoners", "p_main_party"),
@@ -6070,7 +6074,7 @@ game_menus = [
               (call_script, "script_party_set_ai_state", ":attached_party", spai_patrolling_around_center, "$g_encountered_party"),
             (try_end),
           (try_end),
-          (call_script, "script_party_remove_all_companions", "$g_encountered_party"),
+          (call_script, "script_party_remove_all_companions", "$g_encountered_party", "$g_enemy_party"),
           (change_screen_return),
           (party_collect_attachments_to_party, "$g_encountered_party", "p_collective_enemy"), #recalculate so that
           (call_script, "script_party_copy", "p_encountered_party_backup", "p_collective_enemy"), #leaving troops will not be considered as captured
@@ -12228,7 +12232,7 @@ game_menus = [
              (party_is_active, "$capturer_party"),
              (party_relocate_near_party, "p_main_party", "$capturer_party", 2),
            (try_end),
-           (call_script, "script_set_parties_around_player_ignore_player", 8, 12), #it was radius:2 and hours:4, but players make lots of complains about consequent battle losses after releases from captivity then I changed this.
+           (call_script, "script_set_parties_around_player_ignore_player", 8, 12, "p_main_party"), #it was radius:2 and hours:4, but players make lots of complains about consequent battle losses after releases from captivity then I changed this.
            (assign, "$g_player_icon_state", pis_normal),
            (set_camera_follow_party, "p_main_party"),
            (rest_for_hours, 0, 0, 0), #stop resting
@@ -12336,7 +12340,7 @@ game_menus = [
              (party_is_active, "$capturer_party"),
              (party_relocate_near_party, "p_main_party", "$capturer_party", 2),
            (try_end),
-           (call_script, "script_set_parties_around_player_ignore_player", 8, 12), #it was radius:2 and hours:12, but players make lots of complains about consequent battle losses after releases from captivity then I changed this.
+           (call_script, "script_set_parties_around_player_ignore_player", 8, 12, "p_main_party"), #it was radius:2 and hours:12, but players make lots of complains about consequent battle losses after releases from captivity then I changed this.
            (assign, "$g_player_icon_state", pis_normal),
            (set_camera_follow_party, "p_main_party"),
            (rest_for_hours, 0, 0, 0), #stop resting
@@ -12367,7 +12371,7 @@ game_menus = [
           (party_is_active, "$capturer_party"),
           (party_relocate_near_party, "p_main_party", "$capturer_party", 1),
         (try_end),
-        (call_script, "script_set_parties_around_player_ignore_player", 8, 12), #it was radius:2 and hours:6, but players make lots of complains about consequent battle losses after releases from captivity then I changed this.
+        (call_script, "script_set_parties_around_player_ignore_player", 8, 12, "p_main_party"), #it was radius:2 and hours:6, but players make lots of complains about consequent battle losses after releases from captivity then I changed this.
         (assign, "$g_player_icon_state", pis_normal),
         (set_camera_follow_party, "p_main_party"),
         (rest_for_hours, 0, 0, 0), #stop resting
@@ -14589,6 +14593,10 @@ game_menus = [
           (party_clear, "p_coop_local_player_cas"),
           (party_clear, "p_coop_local_enemy_cas"),
           (assign, "$g_coop_local_cas_recording", 1),
+          (call_script, "script_coop_my_party"),
+          (call_script, "script_party_count_members_with_full_health", reg0),
+          (assign, "$g_coop_local_fit_start", reg0),
+          (assign, "$g_coop_local_allies_fallen", 0),
 
           # SP path: identical consequence chain to mnu_encounter "Charge the enemy"
           # (simplified - skips enctype_fighting_against_village_raid branches that
@@ -15116,6 +15124,82 @@ game_menus = [
     ]
   ),
 
+  ("coop_captivity", mnf_scale_picture|mnf_disable_all_keys,
+    "{s1}",
+    "none",
+    [
+        (assign, reg5, "$g_coop_captive_ransom"),
+        (try_begin),
+            (eq, "$g_coop_captive_state", coop_captive_kind_wilderness),
+            (str_store_string, s1, "@Your enemies take you prisoner."),
+            (set_background_mesh, "mesh_pic_prisoner_wilderness"),
+        (else_try),
+            (eq, "$g_coop_captive_state", coop_captive_kind_castle),
+            (gt, "$g_coop_captive_ransom", 0),
+            (str_store_string, s1, "@You spend long hours in the sunless dank of the dungeon, more than you can count. Suddenly one of your captors enters your cell with an offer; he proposes to free you in return for {reg5} denars of your hidden wealth. You decide to..."),
+            (set_background_mesh, "mesh_pic_prisoner_man"),
+        (else_try),
+            (eq, "$g_coop_captive_state", coop_captive_kind_castle),
+            (str_store_string, s1, "@You are quickly surrounded by guards who take away your weapons. With curses and insults, they throw you into the dungeon where you must while away the miserable days of your captivity."),
+            (set_background_mesh, "mesh_pic_prisoner_man"),
+        (else_try),
+            (eq, "$g_coop_captive_state", coop_captive_state_remain),
+            (str_store_string, s1, "@More days pass in the darkness of your cell. You get through them as best you can, enduring the kicks and curses of the guards, watching your underfed body waste away more and more..."),
+            (set_background_mesh, "mesh_pic_prisoner_man"),
+        (else_try),
+            (eq, "$g_coop_captive_state", coop_captive_state_escaped),
+            (str_store_string, s1, "@After painful days of being dragged about as a prisoner, you find a chance and escape from your captors!"),
+            (set_background_mesh, "mesh_pic_escape_1"),
+        (else_try),
+            (eq, "$g_coop_captive_state", coop_captive_state_exchanged),
+            (str_store_string, s1, "@After days of imprisonment, you are finally set free when your captors exchange you with another prisoner."),
+            (set_background_mesh, "mesh_pic_escape_1"),
+        (else_try),
+            (eq, "$g_coop_captive_state", coop_captive_state_ransomed),
+            (str_store_string, s1, "@You pay the ransom and walk out of the dungeon, free."),
+            (set_background_mesh, "mesh_pic_escape_1"),
+        (else_try),
+            (str_store_string, s1, "@Your captors have been defeated, and you are set free."),
+            (set_background_mesh, "mesh_pic_escape_1"),
+        (try_end),
+    ],
+    [
+      ("coop_captivity_ransom_accept",
+      [
+          (eq, "$g_coop_captive_state", coop_captive_kind_castle),
+          (gt, "$g_coop_captive_ransom", 0),
+          (multiplayer_get_my_player, ":my_player"),
+          (player_get_troop_id, ":my_troop", ":my_player"),
+          (store_troop_gold, ":gold", ":my_troop"),
+          (ge, ":gold", "$g_coop_captive_ransom"),
+      ],
+      "Accept the offer.",
+      [
+          (call_script, "script_coop_captivity_send_ransom_answer", 1),
+          (change_screen_return),
+      ]),
+      ("coop_captivity_ransom_refuse",
+      [
+          (eq, "$g_coop_captive_state", coop_captive_kind_castle),
+          (gt, "$g_coop_captive_ransom", 0),
+      ],
+      "Refuse him, wait for something better.",
+      [
+          (call_script, "script_coop_captivity_send_ransom_answer", 0),
+          (change_screen_return),
+      ]),
+      ("coop_captivity_continue",
+      [
+          (this_or_next|neq, "$g_coop_captive_state", coop_captive_kind_castle),
+          (eq, "$g_coop_captive_ransom", 0),
+      ],
+      "Continue...",
+      [
+          (change_screen_return),
+      ]),
+    ]
+  ),
+
   ("coop_server_ip", 0,
     "Server IP is currently: {s59}^^Campaign: {s59}:7240^Battle: {s59}:7241-7247^^Change IP or close.",
     "none",
@@ -15298,6 +15382,12 @@ game_menus = [
         (try_begin),
             (eq, "$g_battle_won", 1),
             (assign, ":win_loss", 1),
+        (try_end),
+        (try_begin),
+            (eq, ":win_loss", -1),
+            (lt, "$g_coop_local_allies_fallen", "$g_coop_local_fit_start"),
+            # Fit troops were left standing: native lets them retreat (no total defeat).
+            (assign, ":win_loss", 0),
         (try_end),
 
         # Casualties + XP come from the kill-tally parties populated during the

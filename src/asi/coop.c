@@ -41,60 +41,29 @@ void coop_log(const char *fmt, ...) {
 #include "warband_addrs_wse2.h"
 #include "modglobals.h"
 #include "steam_tunnel.h"
+#include "asi_rglstring.h"
+#include "asi_publish.h"
+#include "local_result.h"
+#include "local_mission.h"
+#include "browser_row.h"
+#include "autojoin.h"
+#include "asi_patch.h"
+#include "asi_config.h"
+#include "asi_gvars.h"
 
 #define MB_GAME_PLAYER_TROOP_NO    0x3A8    /* offset into mbGame */
-
-/* ------------------------------------------------------------------ */
-/*  rglString helpers (0x40 bytes, 48-byte SSO)                       */
-/* ------------------------------------------------------------------ */
-
-static void rglstring_init(char *rs, const char *value) {
-    int len = (int)strlen(value);
-    memset(rs, 0, 0x40);
-    if (len > 47) len = 47;
-    *(int *)(rs + 0x00)   = 0;
-    *(char **)(rs + 0x04) = rs + 0x10;
-    *(int *)(rs + 0x08)   = 48;
-    *(int *)(rs + 0x0C)   = len;
-    memcpy(rs + 0x10, value, len);
-    rs[0x10 + len] = '\0';
-}
-
-static void write_string_register(int index, const char *value) {
-    char *sr = (char *)(STRING_REG_BASE + index * STRING_REG_STRIDE);
-    int len = (int)strlen(value);
-    if (len > 47) len = 47;
-    memcpy(sr + 0x10, value, len);
-    sr[0x10 + len] = '\0';
-    *(char **)(sr + 0x04) = sr + 0x10;
-    *(int *)(sr + 0x08)   = 48;
-    *(int *)(sr + 0x0C)   = len;
-    *(int *)(sr + 0x00)   = 0;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                            */
 /* ------------------------------------------------------------------ */
 
-/* g_host_ip is the address the browser row and s59 publish. The Steam client
-   proxy re-aims it at loopback; g_host_ip_lan keeps the configured value so
-   the re-aim is reversible when the tunnel dies. Sole writer: the s59
-   thread (see steam_reaim_host_ip). */
-static char g_host_ip[64]       = "127.0.0.1";
-static char g_host_ip_lan[64]   = "127.0.0.1";
-static int  g_port              = 7240;
-static int  g_battle_port       = 7241;
-static char g_module_name[64]   = "NativeCoop";
+/* g_cfg.host_ip is the address the browser row and s59 publish; sole
+   writer after DllMain: the s59 thread (see steam_reaim_host_ip). */
+static asi_config g_cfg;
 static char g_game_dir[MAX_PATH] = "";          /* game directory (dirname of exe), set at DLL load */
-static char g_password[64]      = "";          /* [Coop] Password -- never logged, never sent over the tunnel */
-static steam_cfg_t g_steam_cfg;
 
-/* Resolved at DLL load from variables.txt; index into g_basicGame.m_globalVariables int64 vector */
-static int  g_encountered_party_idx = -1;
-static int  g_asi_local_mission_idx = -1;  /* $g_coop_asi_local_mission: kind requested by the module before change_screen_mission */
-static int  g_my_steam_acctid_idx   = -1;  /* $g_coop_my_steam_acctid: republished every 500ms by s59_writer_thread */
-static int  g_return_campaign_idx   = -1;  /* $g_coop_return_to_campaign: battle server said "battle over" -- arm the auto-join return hop */
-static int  g_steam_missing_idx     = -1;  /* $g_coop_steam_missing: republished every 500ms; 1 = host/client role can't find Steam (module shows the in-game warning) */
+/* Resolved in DllMain before the s59 thread starts and the hooks go in. */
+static asi_gvars g_gv;
 
 static void read_config(HINSTANCE hinstDLL) {
     char dll_path[MAX_PATH], ini_path[MAX_PATH];
@@ -104,59 +73,30 @@ static void read_config(HINSTANCE hinstDLL) {
     if (slash) slash[1] = '\0'; else dll_path[0] = '\0';
     lstrcpynA(ini_path, dll_path, MAX_PATH);
     lstrcatA(ini_path, "coop.ini");
-    GetPrivateProfileStringA("Coop", "HostIP",  "127.0.0.1",  g_host_ip,     sizeof(g_host_ip),    ini_path);
-    lstrcpynA(g_host_ip_lan, g_host_ip, sizeof(g_host_ip_lan));
-    GetPrivateProfileStringA("Coop", "Module",  "NativeCoop",  g_module_name,  sizeof(g_module_name),  ini_path);
-    g_port        = GetPrivateProfileIntA("Coop", "Port",       7240, ini_path);
-    g_battle_port = GetPrivateProfileIntA("Coop", "BattlePort", 7241, ini_path);
-    GetPrivateProfileStringA("Coop", "Password", "", g_password, sizeof(g_password), ini_path);
-    coop_log("config: host=%s port=%d battle=%d module=%s password=%s\n",
-             g_host_ip, g_port, g_battle_port, g_module_name,
-             g_password[0] != '\0' ? "set" : "none");
-    /* write_string_register clamps to 47 chars (s57's rglString SSO); a longer
-       password works for the campaign join but silently truncates on every
-       battle-server hop. */
-    if (strlen(g_password) > 47)
-        coop_log("[coop] Password longer than 47 chars -- battle-server hop will truncate; shorten it\n");
-
-    {
-        char steamid_str[32], allowlist_str[512];
-        memset(&g_steam_cfg, 0, sizeof(g_steam_cfg));
-        g_steam_cfg.host  = GetPrivateProfileIntA("Steam", "SteamHost", 0, ini_path);
-        g_steam_cfg.debug = GetPrivateProfileIntA("Steam", "Debug", 0, ini_path);
-        g_steam_cfg.has_password = (g_password[0] != '\0');
-        GetPrivateProfileStringA("Steam", "HostSteamID64", "", steamid_str,
-                                 sizeof(steamid_str), ini_path);
-        GetPrivateProfileStringA("Steam", "AllowedSteamIDs", "", allowlist_str,
-                                 sizeof(allowlist_str), ini_path);
-        steam_cfg_finalize(&g_steam_cfg, steamid_str, allowlist_str);
-        if (g_steam_cfg.role != STEAM_ROLE_OFF)
-            coop_log("config: [Steam] role=%s\n",
-                     g_steam_cfg.role == STEAM_ROLE_HOST ? "host" : "client");
-    }
+    asi_config_read(&g_cfg, ini_path);
 }
-
-/* Forward declarations for cross-referenced functions */
-static void flush_result_string_to_file(void);
 
 /* ------------------------------------------------------------------ */
 /*  s59 writer thread (writes battle server IP to string register)    */
 /* ------------------------------------------------------------------ */
 
-/* The one place g_host_ip changes: swap to loopback while the Steam client
+/* The one place g_cfg.host_ip changes: swap to loopback while the Steam client
    proxy is live, back to the ini value when it dies. Readers on the main
    thread take a snapshot, and the browser injection additionally waits out
    STEAM_CLI_PENDING, so no reader can observe a half-written address or
    latch a stale one. */
+static int g_host_ip_reaimed = 0;   /* s59 thread */
+static int g_return_latched   = 0;   /* s59 thread */
+
+static void flush_result_string_to_file(void) { local_result_flush(&g_gv.result, g_game_dir); }
+static void check_pending_local_result(void) { local_result_load(&g_gv.pending, g_game_dir); }
+
 static void steam_reaim_host_ip(void) {
-    static int reaimed = 0;
     int up = steam_tunnel_client_is_up();
-    if (up == reaimed) return;
-    reaimed = up;
-    lstrcpynA(g_host_ip, up ? "127.0.0.1" : g_host_ip_lan, sizeof(g_host_ip));
+    if (!host_ip_reaim(&g_host_ip_reaimed, up, g_cfg.host_ip, sizeof(g_cfg.host_ip), g_cfg.host_ip_lan)) return;
     coop_log(up ? "[steam] client proxy up -- HostIP re-aimed to %s (s59 + browser inject)\n"
                 : "[steam] client proxy down -- HostIP restored to %s (LAN fallback)\n",
-             g_host_ip);
+             g_cfg.host_ip);
 }
 
 /* The MP browser opens on the tab persisted in the active profile
@@ -180,8 +120,8 @@ static void force_browser_lan_default(void) {
     forced = 1;
 }
 
-/* Arm the auto-join driver at the campaign server's address (g_host_ip:
-   g_port -- loopback while the joiner tunnel is UP). TUNNEL kind when the
+/* Arm the auto-join driver at the campaign server's address (g_cfg.host_ip:
+   g_cfg.port -- loopback while the joiner tunnel is UP). TUNNEL kind when the
    client proxy is up so a mid-wait tunnel death aborts the join; LOCAL
    otherwise. The FrameMove hook consumes the arm on the render thread. */
 static void arm_campaign_return(const char *why) {
@@ -205,13 +145,12 @@ static DWORD WINAPI s59_writer_thread(LPVOID param) {
              script stores a 48+ char string in it and never returns to its
              SSO slot, so an SSO-equality test would park this loop -- and
              every publish below it -- for the rest of the process. */
-            char *s0 = (char *)STRING_REG_BASE;
-            if (*(char **)(s0 + 0x04) == NULL) continue;
+            if (!rglstring_is_constructed((const char *)STRING_REG_BASE)) continue;
         }
         steam_reaim_host_ip();
-        write_string_register(59, g_host_ip);
-        write_string_register(57, g_password);  /* mirror for module_simple_triggers.py's deferred battle connect */
-        if (!written) { coop_log("s59=%s\n", g_host_ip); written = 1; }
+        rglstring_set_sso((char *)(STRING_REG_BASE + 59 * STRING_REG_STRIDE), g_cfg.host_ip);
+        rglstring_set_sso((char *)(STRING_REG_BASE + 57 * STRING_REG_STRIDE), g_cfg.password);  /* mirror for module_simple_triggers.py's deferred battle connect */
+        if (!written) { coop_log("s59=%s\n", g_cfg.host_ip); written = 1; }
 
         /* Republish the Steam account id every tick: the engine wipes
            module globals on every server connect, and a module-side
@@ -222,33 +161,25 @@ static DWORD WINAPI s59_writer_thread(LPVOID param) {
            and battle spawn by that long on no-Steam clients). A later
            tick overwrites the sentinel with the real acctid if Steam
            comes up; the module latches identify per connection. */
-        if (g_my_steam_acctid_idx >= 0) {
-            unsigned int acctid = steam_tunnel_local_acctid();
-            modglobals_set(g_my_steam_acctid_idx, acctid ? (__int64)acctid : -1);
+        if (g_gv.my_steam_acctid >= 0) {
+            modglobals_set(g_gv.my_steam_acctid,
+                           acctid_global_value(steam_tunnel_local_acctid()));
         }
 
         /* Publish whether a Steam-needing role has given up finding Steam, so
            the module can warn the host in-game. Republished every tick for the
            same reason as the acctid: the engine wipes module globals on connect. */
-        if (g_steam_missing_idx >= 0)
-            modglobals_set(g_steam_missing_idx, steam_tunnel_steam_missing());
+        if (g_gv.steam_missing >= 0)
+            modglobals_set(g_gv.steam_missing, steam_tunnel_steam_missing());
 
         /* Post-battle return hop: the battle server's ch127 ev-55 handler
            sets $g_coop_return_to_campaign just before the end-of-battle
            kick. Edge-latched: the global stays 1 until the engine wipes it
            on the reconnect this very arm causes, so without the latch this
            loop would re-arm forever. */
-        if (g_return_campaign_idx >= 0) {
-            static int return_latched = 0;
-            if (modglobals_get_int(g_return_campaign_idx, 0) == 1) {
-                if (!return_latched) {
-                    return_latched = 1;
-                    arm_campaign_return("battle over");
-                }
-            } else {
-                return_latched = 0;
-            }
-        }
+        if (g_gv.return_to_campaign >= 0 &&
+            return_latch_step(&g_return_latched, modglobals_get_int(g_gv.return_to_campaign, 0)))
+            arm_campaign_return("battle over");
 
         /* One-shot m_storedPassword prefill: covers the engine's own
            m_switchingModule direct-connect arm only -- a manual browser
@@ -257,15 +188,8 @@ static DWORD WINAPI s59_writer_thread(LPVOID param) {
            write per RE Q8: only safe when the rglString's existing buffer
            capacity (+0x08) exceeds the new length; never re-point +0x04 at
            the SSO slot. */
-        if (!pw_prefilled && g_password[0]) {
-            char *rs  = (char *)ADDR_DIRECT_CONNECT_PASS;
-            int   cap = *(int *)(rs + 0x08);
-            int   len = (int)strlen(g_password);
-            if (len < cap) {
-                char *buf = *(char **)(rs + 0x04);
-                memcpy(buf, g_password, len);
-                buf[len] = '\0';
-                *(int *)(rs + 0x0C) = len;
+        if (!pw_prefilled && g_cfg.password[0]) {
+            if (rglstring_assign_in_place((char *)ADDR_DIRECT_CONNECT_PASS, g_cfg.password)) {
                 coop_log("[steam] stored password prefilled from coop.ini\n");
             } else {
                 coop_log("[steam] stored password prefill skipped -- exceeds buffer capacity\n");
@@ -284,27 +208,9 @@ static DWORD WINAPI s59_writer_thread(LPVOID param) {
 typedef void (__fastcall *fn_thiscall_void)(void *ecx, void *edx);
 typedef void (__fastcall *fn_thiscall_ptr)(void *ecx, void *edx, void *arg);
 
-static int g_server_injected = 0;
-
-/* A re-Search within 20 s (m_searchType 3) re-pings the CURRENT list
-   without clearing it, so scan-triggered re-injection must not push a
-   second copy of our row. rglString data pointer lives at +0x04. */
-static int server_row_exists(const char *ip, int port) {
-    char *first = *(char **)ADDR_SERVER_LIST;
-    char *last  = *(char **)(ADDR_SERVER_LIST + 4);
-    char *row;
-    if (!first) return 0;
-    for (row = first; row < last; row += 0x180) {
-        const char *row_ip = *(const char **)(row + 0x04);
-        if (*(int *)(row + 0x44) == port && row_ip && strcmp(row_ip, ip) == 0)
-            return 1;
-    }
-    return 0;
-}
-
 static void inject_server(void *browser_window) {
     /* mbnetServer is 0x180 bytes */
-    char server[0x180];
+    char server[BROWSER_ROW_SIZE];
     char host_ip[64];
     fn_thiscall_void server_ctor = (fn_thiscall_void)ADDR_SERVER_CTOR;
     fn_thiscall_void server_dtor = (fn_thiscall_void)ADDR_SERVER_DTOR;
@@ -312,38 +218,22 @@ static void inject_server(void *browser_window) {
     fn_thiscall_void fill_list   = (fn_thiscall_void)ADDR_FILL_SERVER_LIST;
 
     /* One snapshot of the address the s59 thread owns */
-    lstrcpynA(host_ip, g_host_ip, sizeof(host_ip));
+    lstrcpynA(host_ip, g_cfg.host_ip, sizeof(host_ip));
 
-    if (server_row_exists(host_ip, g_port)) {
-        coop_log("server row %s:%d already listed -- push skipped\n", host_ip, g_port);
-        g_server_injected = 1;
+    if (browser_row_exists(*(char **)ADDR_SERVER_LIST, *(char **)(ADDR_SERVER_LIST + 4),
+                           host_ip, g_cfg.port)) {
+        coop_log("server row %s:%d already listed -- push skipped\n", host_ip, g_cfg.port);
         return;
     }
 
     /* Construct default mbnetServer */
     server_ctor((void *)server, NULL);
 
-    /* Fill fields */
-    rglstring_init(server + 0x000, host_ip);           /* m_ip */
-    *(int *)(server + 0x040) = 1;                      /* m_ping */
-    *(int *)(server + 0x044) = g_port;                 /* m_port */
-    *(int *)(server + 0x048) = -1;                     /* m_siteNo (-1 = campaign, no active mission) */
-    *(int *)(server + 0x04C) = -1;                     /* m_missionTemplateNo (-1 = campaign) */
-    rglstring_init(server + 0x050, "COOP Direct");     /* m_name */
-    rglstring_init(server + 0x090, g_module_name);      /* m_moduleName - must match g_moduleName (dir name) */
-    rglstring_init(server + 0x0D0, "");                /* m_siteName */
-    rglstring_init(server + 0x110, "");                /* m_gameTypeName */
-    *(int *)(server + 0x150) = 0;                      /* m_numPlayers */
-    *(int *)(server + 0x154) = 10;                     /* m_maxNumPlayers */
-    /* One writer: invite :pw flag (Steam path) or local Password= (host's own
-       client / prefilled joiner). LAN joiners without either degrade to the
-       engine's wrong-password reject. */
-    *(int *)(server + 0x158) =
-        (steam_tunnel_invite_pw() || g_password[0]) ? 1 : 0;  /* m_passworded */
-    *(int *)(server + 0x15C) = 1;                      /* m_dedicated */
-    *(int *)(server + 0x160) = 1170;                   /* m_gameVersion */
-    *(int *)(server + 0x164) = 0;                      /* m_moduleVersion */
-    *(int *)(server + 0x17C) = 1145;                   /* m_extendedVersion (0x479) */
+    /* One writer for m_passworded: invite :pw flag (Steam path) or local
+       Password= (host's own client / prefilled joiner). LAN joiners without
+       either degrade to the engine's wrong-password reject. */
+    browser_row_fill(server, host_ip, g_cfg.port, g_cfg.module_name,
+                     steam_tunnel_invite_pw() || g_cfg.password[0]);
 
     /* Push to g_multiplayerData.m_serverList */
     vec_push((void *)ADDR_SERVER_LIST, NULL, (void *)server);
@@ -352,12 +242,10 @@ static void inject_server(void *browser_window) {
     fill_list(browser_window, NULL);
 
     coop_log("server injected: %s:%d name='COOP Direct' module=%s\n",
-             host_ip, g_port, g_module_name);
+             host_ip, g_cfg.port, g_cfg.module_name);
 
     /* Cleanup local (vector made a copy) */
     server_dtor((void *)server, NULL);
-
-    g_server_injected = 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -368,126 +256,19 @@ static void inject_server(void *browser_window) {
 static BYTE  g_fm_saved[8];
 static DWORD g_fm_trampoline = 0;
 
-static int g_scan_was_active = 0;
-
-static int g_result_ready_idx = -1;
-static int g_result_win_loss_idx = -1;
-static int g_result_xp_idx = -1;
-static int g_result_cas_count_idx = -1;
-static int g_result_cas_idx[10] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
-static void check_pending_local_result(void);
-#define LOCAL_RESULT_FILENAME "coop_local_result.ini"
-
-/* Read result data from module globals, write to .ini.
-   The debrief writes: $g_coop_result_win_loss, $g_coop_result_xp,
-   $g_coop_result_cas_count, and trp_temp_array_c slots 100+i / 120+i. */
-static void flush_result_string_to_file(void) {
-    char path[MAX_PATH];
-    FILE *f;
-    int win, xp, cas_count, i, tid, killed;
-
-    if (g_result_ready_idx < 0) return;
-    if (modglobals_get_int(g_result_ready_idx, 0) != 1) return;
-    modglobals_set(g_result_ready_idx, 0);
-
-    win = modglobals_get_int(g_result_win_loss_idx, 0);
-    xp  = modglobals_get_int(g_result_xp_idx, 0);
-    cas_count = modglobals_get_int(g_result_cas_count_idx, 0);
-    if (cas_count > 10) cas_count = 10;
-
-    coop_log("flush_result: win=%d xp=%d cas=%d (from globals)\n", win, xp, cas_count);
-
-    _snprintf(path, sizeof(path), "%s\\%s", g_game_dir, LOCAL_RESULT_FILENAME);
-    path[MAX_PATH-1] = 0;
-    f = fopen(path, "w");
-    if (!f) { coop_log("flush_result: cannot write %s\n", path); return; }
-
-    fprintf(f, "[Result]\n");
-    fprintf(f, "valid=1\n");
-    fprintf(f, "win_loss=%d\n", win);
-    fprintf(f, "xp_after=%d\n", xp);
-
-    for (i = 0; i < cas_count; i++) {
-        int packed = modglobals_get_int(g_result_cas_idx[i], 0);
-        tid    = packed / 1000;
-        killed = packed % 1000;
-        fprintf(f, "cas_%d_troop=%d\n", i, tid);
-        fprintf(f, "cas_%d_killed=%d\n", i, killed);
-        coop_log("flush_result: cas[%d] packed=%d troop=%d killed=%d\n", i, packed, tid, killed);
-    }
-    fprintf(f, "cas_count=%d\n", cas_count);
-    fclose(f);
-    coop_log("flush_result: written to %s\n", path);
-}
+static browser_inject g_browser_inject = BROWSER_INJECT_INIT;   /* render thread */
 
 static void __cdecl browser_framemove_pre(void *this_ptr) {
-    int searching, mode;
-    /* Edge-logged state so a failed post-join re-injection is diagnosable
-       from the log alone: every early-out below is otherwise silent. */
-    static int s_last_mode = 0x7FFFFFFF;
-    static int s_searching_prev = 0;
-    static int s_pending_logged = 0;
-    static int s_null_table_logged = 0;
-
-    mode = *(int *)ADDR_MAP_INTERACTION_MODE;
-    if (mode != s_last_mode) {
-        coop_log("browser: gameType=%d (was %d)\n", mode, s_last_mode);
-        s_last_mode = mode;
-    }
+    int mode = *(int *)ADDR_MAP_INTERACTION_MODE;
 
     if (mode == 4) {
         flush_result_string_to_file();
         check_pending_local_result();
     }
 
-    if (mode != 4) return;
-
-    searching = *(BYTE *)ADDR_SEARCHING_SERVERS;
-
-    /* Every scan wipes the engine's server list, taking our row with it --
-       re-arm injection whenever a new scan starts so the row comes back
-       after each refresh/join instead of once per process. */
-    if (searching) {
-        if (!s_searching_prev)
-            coop_log("browser: scan started (injection re-armed)\n");
-        s_searching_prev = 1;
-        g_scan_was_active = 1;
-        g_server_injected = 0;
-        return;
-    }
-    s_searching_prev = 0;
-
-    if (g_server_injected) return;
-
-    /* Inject after LAN scan finishes (list is stable) */
-    if (!g_scan_was_active) return;
-
-    /* Injection is one-shot and the row is never corrected, so it must not
-       fire while the Steam client verdict is still open -- a LAN address
-       latched here would be unroutable for the rest of the session. */
-    if (steam_tunnel_client_state() == STEAM_CLI_PENDING) {
-        if (!s_pending_logged) {
-            coop_log("browser: injection held -- Steam client verdict PENDING\n");
-            s_pending_logged = 1;
-        }
-        return;
-    }
-    s_pending_logged = 0;
-
-    {
-        void *table = *(void **)((char *)this_ptr + 0x88);
-        if (!table) {
-            if (!s_null_table_logged) {
-                coop_log("browser: injection waiting -- table widget null\n");
-                s_null_table_logged = 1;
-            }
-            return;
-        }
-        s_null_table_logged = 0;
-    }
-
-    coop_log("LAN scan done, injecting server entry\n");
-    inject_server(this_ptr);
+    if (browser_inject_step(&g_browser_inject, mode, *(BYTE *)ADDR_SEARCHING_SERVERS,
+                            steam_tunnel_client_state, *(void **)((char *)this_ptr + 0x88)))
+        inject_server(this_ptr);
 }
 
 __declspec(naked) void browser_framemove_detour(void) {
@@ -511,130 +292,37 @@ __declspec(naked) void browser_framemove_detour(void) {
 static BYTE  g_aj_saved[16];
 static DWORD g_aj_trampoline = 0;
 
-/* Generous by design: covers a player parked on a dead-zone screen the
-   engine can't navigate away from (a modal dialog, a live SP battle). */
-#define AUTOJOIN_TIMEOUT_MS 60000
+static autojoin g_autojoin = AUTOJOIN_INIT;   /* render thread */
 
-static void autojoin_clear_engine_flags(void) {
-    /* m_connectToServer must be cleared by us in BOTH exits: the initial
-       menu's native clear is our own 7-NOP "opcode 3415 fix", so a stale 1
-       bounces the player into the browser on every main-menu visit; and a
-       stale m_switchingModule auto-connects on their next manual browser
-       visit (row-0 mismatch never clears it). */
-    *(BYTE *)ADDR_SWITCHING_MODULE        = 0;
-    *(BYTE *)ADDR_SWITCHING_TO_CAMPAIGN   = 0;
-    *(BYTE *)ADDR_DIRECT_CONNECT_FLAG     = 0;
+static void engine_rgl_copy(void *rgl_string, const char *value) {
+    typedef void (__fastcall *fn_rgl_copy)(void *ecx, void *edx, const char *s);
+    ((fn_rgl_copy)ADDR_RGL_STRING_COPY)(rgl_string, NULL, value);
+}
+
+static void engine_set_window(int window) {
+    ((void (__stdcall *)(int))ADDR_SET_WINDOW)(window);
 }
 
 static void __cdecl autojoin_framemove_pre(void) {
-    static int   s_active = 0;   /* 0 idle, else the STEAM_AUTOJOIN_* kind */
-    static DWORD s_arm_tick = 0;
-    static int   s_navs = 0;
-
-    if (!s_active) {
-        int kind = steam_tunnel_autojoin_armed();
-        if (!kind) return;
-        if (kind == STEAM_AUTOJOIN_TUNNEL && !steam_tunnel_client_is_up()) {
-            steam_tunnel_autojoin_clear();   /* tunnel died between arm and fire */
-            return;
-        }
-        {
-            /* Replicate opcode 3415's stores (RE Q5). Address = the s59
-               thread's re-aimed host IP (loopback while the tunnel is up)
-               with the explicit port -- the type-4 direct search would
-               default a bare IP to rglConfig's iServerPort, which is
-               user-editable (RE round 2). Password = our own [Coop]
-               Password= (empty for open servers; the pw-without-local-
-               password case never arms -- verdict 0). m_switchingToCampaign
-               makes the starting/map/tactical native arms pick loading
-               mode 6, whose doStep writes m_gameType = 4 -- with any other
-               gameType the engine DROPS the campaign server's ping reply
-               and the row table stays empty. rglString::operator= is safe
-               here: this IS the render thread. */
-            typedef void (__fastcall *fn_rgl_copy)(void *ecx, void *edx, const char *s);
-            char host_addr[80];
-            _snprintf(host_addr, sizeof(host_addr), "%s:%d", g_host_ip, g_port);
-            host_addr[sizeof(host_addr) - 1] = '\0';
-            ((fn_rgl_copy)ADDR_RGL_STRING_COPY)((void *)ADDR_DIRECT_CONNECT_ADDR, NULL, host_addr);
-            ((fn_rgl_copy)ADDR_RGL_STRING_COPY)((void *)ADDR_DIRECT_CONNECT_PASS, NULL, g_password);
-            /* m_connectToServer is deliberately NOT set here: it is a pure
-               navigation trigger, and the same-frame window dispatch would
-               let the main menu's native arm consume it first -- that arm
-               hardcodes loading mode 4, whose frameMove writes m_gameType=1,
-               under which the engine drops the campaign server's ping reply
-               (runtime-proven). All menu-screen navigation is ours (mode 6);
-               the flag is set just-in-time for the WAIT_NATIVE contexts
-               below, whose map/tactical arms are the ones that need it. */
-            *(BYTE *)ADDR_SWITCHING_MODULE      = 1;
-            *(BYTE *)ADDR_SWITCHING_TO_CAMPAIGN = 1;
-            s_arm_tick = GetTickCount();
-            s_active = kind;
-            s_navs = 0;
-            coop_log("[autojoin] engine flags set -- address=%s (%s)\n", host_addr,
-                     kind == STEAM_AUTOJOIN_LOCAL ? "own server, LAN" : "tunnel");
-        }
-        return;
-    }
-
-    /* The engine clears m_switchingModule on connect and on every connect()
-       rejection -- either way the arm is spent. */
-    if (*(BYTE *)ADDR_SWITCHING_MODULE == 0) {
-        autojoin_clear_engine_flags();
-        steam_tunnel_autojoin_clear();
-        s_active = 0;
-        coop_log("[autojoin] consumed by engine -- flags cleared\n");
-        return;
-    }
-
-    if (GetTickCount() - s_arm_tick > AUTOJOIN_TIMEOUT_MS ||
-        (s_active == STEAM_AUTOJOIN_TUNNEL && !steam_tunnel_client_is_up())) {
-        autojoin_clear_engine_flags();
-        steam_tunnel_autojoin_clear();
-        s_active = 0;
-        coop_log("[autojoin] timed out or tunnel down -- flags cleared; COOP Direct row remains in the browser\n");
-        return;
-    }
-
-    /* Dead-zone screens: the flag-consuming windows self-navigate (SELF)
-       and a live mission / buried campaign map must not be yanked (WAIT) --
-       force navigation only from screens nothing else covers. Recipe lifted
-       from mbStartingWindow::frameMove (mode 6 skips the m_switchingModule
-       requirement in the loading window's MP arm). */
-    {
-        const int *begin = *(const int **)ADDR_OPEN_WINDOWS_BEGIN;
-        const int *end   = *(const int **)ADDR_OPEN_WINDOWS_END;
-        char *lw;
-        int action;
-        if (!begin || end <= begin) return;
-        action = steam_autojoin_window_action(begin, (int)(end - begin));
-        if (action == STEAM_AJ_WAIT_NATIVE) {
-            /* Map / live mission: the native arms own the transition (the
-               map joins the network thread; tactical waits for mission
-               end). Both pick loading mode 6 via m_switchingToCampaign.
-               Idempotent re-set; the consuming arm clears it. */
-            *(BYTE *)ADDR_DIRECT_CONNECT_FLAG = 1;
-            return;
-        }
-        if (action != STEAM_AJ_NAVIGATE) return;
-        lw = *(char **)ADDR_LOADING_WINDOW_PTR;
-        if (!lw) return;
-        /* No MP profile makes loading mode 6 fall through to the profiles
-           window, which we would re-navigate forever -- cap the loop and
-           leave the player where the engine put them. */
-        if (s_navs >= 5) {
-            autojoin_clear_engine_flags();
-            steam_tunnel_autojoin_clear();
-            s_active = 0;
-            coop_log("[autojoin] navigation not sticking (no MP profile?) -- flags cleared\n");
-            return;
-        }
-        s_navs++;
-        *(int *)(lw + LOADING_WINDOW_SOURCE_OFF) = 4;   /* back target: main menu */
-        *(int *)(lw + LOADING_WINDOW_MODE_OFF)   = 6;
-        *(int *)(lw + LOADING_WINDOW_STEP_OFF)   = 0;
-        ((void (__stdcall *)(int))ADDR_SET_WINDOW)(3);
-        coop_log("[autojoin] navigating to MP browser (loading mode 6, attempt %d)\n", s_navs);
-    }
+    const int *begin = *(const int **)ADDR_OPEN_WINDOWS_BEGIN;
+    const int *end   = *(const int **)ADDR_OPEN_WINDOWS_END;
+    autojoin_env env;
+    env.switching_module      = (volatile unsigned char *)ADDR_SWITCHING_MODULE;
+    env.switching_to_campaign = (volatile unsigned char *)ADDR_SWITCHING_TO_CAMPAIGN;
+    env.connect_to_server     = (volatile unsigned char *)ADDR_DIRECT_CONNECT_FLAG;
+    env.open_windows   = begin;
+    env.n_open_windows = (begin && end > begin) ? (int)(end - begin) : 0;
+    env.loading_window = *(char **)ADDR_LOADING_WINDOW_PTR;
+    env.tunnel_up      = steam_tunnel_client_is_up();
+    env.now            = GetTickCount();
+    env.host_ip        = g_cfg.host_ip;
+    env.port           = g_cfg.port;
+    env.password       = g_cfg.password;
+    env.stored_address  = (void *)ADDR_DIRECT_CONNECT_ADDR;
+    env.stored_password = (void *)ADDR_DIRECT_CONNECT_PASS;
+    env.rgl_copy   = engine_rgl_copy;
+    env.set_window = engine_set_window;
+    autojoin_step(&g_autojoin, &env);
 }
 
 __declspec(naked) void autojoin_framemove_detour(void) {
@@ -657,27 +345,23 @@ static BYTE  g_ca_saved[16]   = {0};
    (address of param 2 on the stack, i.e. ESP+4 at the callee entry).
    Mutates playerNo in place when all match conditions hold. */
 static void __cdecl create_agent_pre(DWORD *args) {
-    int gameType = *(int *)ADDR_MAP_INTERACTION_MODE;
-    if (gameType != 4) return;
-
     /* args[0] = transform, args[1] = entryPointNo, args[2] = troopNo, ...,
        args[13] = playerNo. Indices are (param# - 2) since `this` is in ECX. */
     int troopNo  = (int)args[2];
     int playerNo = (int)args[13];
-    if (playerNo != -1) return;
+    int newPlayerNo;
 
     /* g_mbGame is a pointer at 0xA4F6A4; m_playerTroopNo at +0x3A8. */
     void *mbGame = *(void **)ADDR_CUR_GAME;
     if (!mbGame) return;
-    int playerTroopNo = *(int *)((BYTE *)mbGame + MB_GAME_PLAYER_TROOP_NO);
-    if (troopNo != playerTroopNo) return;
+    newPlayerNo = create_agent_player_no(*(int *)ADDR_MAP_INTERACTION_MODE, troopNo, playerNo,
+                                         *(int *)((BYTE *)mbGame + MB_GAME_PLAYER_TROOP_NO),
+                                         *(int *)ADDR_LOCAL_PLAYER_IDX);
+    if (newPlayerNo == playerNo) return;
 
-    int myPlayerNo = *(int *)ADDR_LOCAL_PLAYER_IDX;
-    if (myPlayerNo < 0) return;  /* no MP player object -> do nothing */
-
-    args[13] = (DWORD)myPlayerNo;
+    args[13] = (DWORD)newPlayerNo;
     coop_log("createAgent detour: playerNo -1 -> %d for troopNo=%d\n",
-             myPlayerNo, troopNo);
+             newPlayerNo, troopNo);
 }
 
 __declspec(naked) void create_agent_detour(void) {
@@ -705,67 +389,11 @@ __declspec(naked) void create_agent_detour(void) {
 static DWORD g_sp_trampoline = 0;
 static BYTE  g_sp_saved[16]  = {0};
 
-/* Local mission kinds a campaign client can request through
-   $g_coop_asi_local_mission (module_constants.py coop_asi_local_mission_*). */
-#define LOCAL_MISSION_NONE   0
-#define LOCAL_MISSION_BATTLE 1
-#define LOCAL_MISSION_VISIT  2
-
 /* Nonzero while a module-requested local mission runs: setparams_pre and
    mission_framemove_detour hold gameType at 0 inside the window dispatch,
    mission_end_restore_gametype clears it at the mission-end transition. */
 static volatile int g_in_coop_local_mission = 0;
 static int g_local_mission_kind = LOCAL_MISSION_NONE;
-
-static void __cdecl fixup_meta_mission_for_coop(void) {
-    volatile int *meta;
-    int party_no;
-    int kind;
-    int prev;
-
-    if (*(int *)ADDR_MAP_INTERACTION_MODE != 4) return;
-
-    kind = modglobals_get_int(g_asi_local_mission_idx, LOCAL_MISSION_NONE);
-    if (kind != LOCAL_MISSION_BATTLE && kind != LOCAL_MISSION_VISIT) return;
-
-    /* One request per mission: clear before validating so a bad request
-       cannot linger and arm a later, unrelated mission. */
-    modglobals_set(g_asi_local_mission_idx, LOCAL_MISSION_NONE);
-
-    party_no = modglobals_get_int(g_encountered_party_idx, -1);
-    if (party_no < 0) {
-        coop_log("metaMission fixup: kind=%d but $g_encountered_party=%d, request dropped\n",
-                 kind, party_no);
-        return;
-    }
-
-    /* The request owns the whole record. setParams copies every field from
-       here and mbMission::start/frameMove never read it again, so a prior
-       encounter left in place would be spawned as this mission's parties. */
-    meta = (volatile int *)ADDR_META_MISSION;
-    prev = meta[0];
-    meta[0] = party_no;                                 /* +0x00 encounteredParties[0] */
-    meta[1] = -1;                                       /* +0x04 encounteredParties[1] */
-    *(int *)((BYTE *)meta + 0x0C) = 0;                  /* m_type (0 = field)          */
-    *(int *)((BYTE *)meta + 0x18) = 0;                  /* m_mainPartySide             */
-    /* A hostile encounter puts the encountered party on the opposing side so
-       party-sourced entries spawn as enemies. A visit mirrors the record
-       mbMetaMission::startMapEvent writes for a peaceful map encounter. */
-    *(int *)((BYTE *)meta + 0x24) = (kind == LOCAL_MISSION_BATTLE) ? 1 : 0;  /* m_enemySide */
-    *(int *)((BYTE *)meta + 0x30) = 1;                  /* m_inEvent                   */
-    *(int *)((BYTE *)meta + 0x44) = 1;                  /* m_enemiesPresent            */
-
-    coop_log("metaMission fixup: kind=%d encountered_party=%d written to 0x%X (prior meta[0]=%d)\n",
-             kind, party_no, ADDR_META_MISSION, prev);
-
-    /* gameType is NOT changed here -- it stays at 4 so network listen/send
-       in mbCoreGame::frameMove keep working. gameType=0 is set in the
-       setParams prologue detour (inside the window dispatch, after network
-       listen) and restored in the frameMove cleanup (before network send). */
-    g_in_coop_local_mission = 1;
-    g_local_mission_kind = kind;
-    coop_log("local mission flag set (gameType stays 4 until window dispatch)\n");
-}
 
 /* ------------------------------------------------------------------ */
 /*  Drain the client's outbound event queue while gameType is still 4. */
@@ -800,9 +428,18 @@ static void coop_flush_client_events(void) {
 }
 
 static void __cdecl setparams_pre(void) {
+    int kind;
     g_in_coop_local_mission = 0;
-    fixup_meta_mission_for_coop();
-    if (g_in_coop_local_mission) {
+    kind = local_mission_fixup((volatile int *)ADDR_META_MISSION, *(int *)ADDR_MAP_INTERACTION_MODE,
+                               g_gv.asi_local_mission, g_gv.encountered_party);
+    if (kind != LOCAL_MISSION_NONE) {
+        /* gameType is NOT changed in the fixup -- it stays at 4 so network
+           listen/send in mbCoreGame::frameMove keep working. gameType=0 is
+           set here (inside the window dispatch, after network listen) and
+           restored in the frameMove cleanup (before network send). */
+        g_in_coop_local_mission = 1;
+        g_local_mission_kind = kind;
+        coop_log("local mission flag set (gameType stays 4 until window dispatch)\n");
         coop_flush_client_events();
         *(int *)ADDR_MAP_INTERACTION_MODE = 0;
     }
@@ -888,74 +525,15 @@ typedef char assert_game_type_addr[(ADDR_MAP_INTERACTION_MODE == 0xA89524) ? 1 :
 static DWORD g_met_trampoline = 0;
 static BYTE  g_met_saved[16]  = {0};
 
-/* Pending local battle result -- saved to file by ASI, loaded on next launch.
-   The result file lives at <game_dir>/coop_local_result.ini so the ASI can
-   read/write it without WSE2 dict restrictions. */
-
-
-
-/* Check for pending result file on launch, write values to module globals
-   so the simple trigger can send them to the server. */
-static int g_pending_result_idx = -1;
-static int g_pending_win_loss_idx = -1;
-
-static int g_pending_xp_idx = -1;
-static int g_pending_cas_count_idx = -1;
-static int g_pending_cas_tid_idx[10]    = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
-static int g_pending_cas_killed_idx[10] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
-
-static void check_pending_local_result(void) {
-    char path[MAX_PATH], key[32];
-    int valid, win_loss, xp, cas_count, i, tid, killed;
-
-    if (g_pending_result_idx < 0 || g_pending_win_loss_idx < 0) return;
-    if (modglobals_get_int(g_pending_result_idx, 0) != 0) return;
-
-    _snprintf(path, sizeof(path), "%s\\%s", g_game_dir, LOCAL_RESULT_FILENAME);
-    path[MAX_PATH-1] = 0;
-    valid = GetPrivateProfileIntA("Result", "valid", 0, path);
-    if (!valid) return;
-    coop_log("check_pending: path=%s valid=%d\n", path, valid);
-
-    win_loss  = GetPrivateProfileIntA("Result", "win_loss", 0, path);
-    xp        = GetPrivateProfileIntA("Result", "xp_after", 0, path);
-    cas_count = GetPrivateProfileIntA("Result", "cas_count", 0, path);
-    if (cas_count > 10) cas_count = 10;
-
-    modglobals_set(g_pending_result_idx, 1);
-    modglobals_set(g_pending_win_loss_idx, win_loss);
-    if (g_pending_xp_idx >= 0) modglobals_set(g_pending_xp_idx, xp);
-    if (g_pending_cas_count_idx >= 0) modglobals_set(g_pending_cas_count_idx, cas_count);
-
-    for (i = 0; i < cas_count; i++) {
-        _snprintf(key, sizeof(key), "cas_%d_troop", i);
-        tid = GetPrivateProfileIntA("Result", key, 0, path);
-        _snprintf(key, sizeof(key), "cas_%d_killed", i);
-        killed = GetPrivateProfileIntA("Result", key, 0, path);
-        if (g_pending_cas_tid_idx[i] >= 0)
-            modglobals_set(g_pending_cas_tid_idx[i], tid);
-        if (g_pending_cas_killed_idx[i] >= 0)
-            modglobals_set(g_pending_cas_killed_idx[i], killed);
-        coop_log("check_pending: cas[%d] troop=%d killed=%d\n", i, tid, killed);
-    }
-
-    coop_log("check_pending: win=%d xp=%d cas=%d\n", win_loss, xp, cas_count);
-    DeleteFileA(path);
-}
-
 static void __cdecl mission_end_restore_gametype(void) {
-    if (!g_in_coop_local_mission) return;
-    g_in_coop_local_mission = 0;
-    *(int *)ADDR_MAP_INTERACTION_MODE = 4;
-    coop_log("mission-end transition: gameType restored to 4\n");
     /* The teardown epilogue this hook sits in drops the campaign connection
        for any mission ended at gameType 4, so the client lands in the
        server browser. A visit has no debrief to show; rejoin straight
        away. A local battle keeps its debrief menu and the manual rejoin
        (its result travels by file on the next browser visit). */
-    if (g_local_mission_kind == LOCAL_MISSION_VISIT)
+    if (local_mission_end(&g_in_coop_local_mission, &g_local_mission_kind,
+                          (int *)ADDR_MAP_INTERACTION_MODE))
         arm_campaign_return("visit over");
-    g_local_mission_kind = LOCAL_MISSION_NONE;
 }
 
 __declspec(naked) void mission_end_transition_detour(void) {
@@ -1085,6 +663,10 @@ __declspec(naked) void party_talk_call_detour(void) {
    native windows, so open==1 in poller means screen just closed). No vtable
    hooks needed -- wse_window_opened sets the open flag, poller diffs on close. */
 
+static const BYTE k_nops[16] = {
+    0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+    0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+
 /* ------------------------------------------------------------------ */
 /*  DllMain                                                           */
 /* ------------------------------------------------------------------ */
@@ -1093,15 +675,12 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     (void)lpvReserved;
     if (fdwReason == DLL_PROCESS_ATTACH) {
         char exe_path[MAX_PATH];
-        char *last_slash;
         DisableThreadLibraryCalls(hinstDLL);
         GetModuleFileNameA(NULL, exe_path, MAX_PATH);
         if (!strstr(exe_path, "mb_warband_wse2.exe")) return TRUE;
 
         /* Derive game dir (dirname of exe) for later use by variables.txt lookup */
-        lstrcpynA(g_game_dir, exe_path, MAX_PATH);
-        last_slash = strrchr(g_game_dir, '\\');
-        if (last_slash) *last_slash = '\0';
+        asi_game_dir(exe_path, g_game_dir, MAX_PATH);
 
         g_log = fopen("warband_coop.log", "w");
         coop_log("warband_coop.asi loaded\n");
@@ -1111,13 +690,7 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
            (ASLR disabled via binary patch). Resolve all setParams-fixup +
            result-reporting IDs in one variables.txt pass. */
         {
-            enum { N_FIXED = 13, N_ALL = N_FIXED + 30 };
             char vars_path[MAX_PATH];
-            char cas_names[30][40];
-            const char *names[N_ALL];
-            int *dest[N_ALL];
-            int idxs[N_ALL];
-            int n = 0, ci;
             modglobals_desc d;
 
             g_addrs = &g_addrs_client;
@@ -1126,49 +699,16 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
             modglobals_init(&d);
 
             _snprintf(vars_path, sizeof(vars_path), "%s\\Modules\\%s\\variables.txt",
-                      g_game_dir, g_module_name);
+                      g_game_dir, g_cfg.module_name);
             vars_path[MAX_PATH-1] = 0;
-
-            names[n] = "g_encountered_party";          dest[n] = &g_encountered_party_idx; n++;
-            names[n] = "g_coop_asi_local_mission";     dest[n] = &g_asi_local_mission_idx; n++;
-            names[n] = "g_coop_pending_local_result";  dest[n] = &g_pending_result_idx;    n++;
-            names[n] = "$g_coop_pending_win_loss";     dest[n] = &g_pending_win_loss_idx;  n++;
-            names[n] = "$g_coop_pending_xp";           dest[n] = &g_pending_xp_idx;        n++;
-            names[n] = "$g_coop_pending_cas_count";    dest[n] = &g_pending_cas_count_idx; n++;
-            names[n] = "g_coop_result_ready";          dest[n] = &g_result_ready_idx;      n++;
-            names[n] = "g_coop_result_win_loss";       dest[n] = &g_result_win_loss_idx;   n++;
-            names[n] = "g_coop_result_xp";             dest[n] = &g_result_xp_idx;         n++;
-            names[n] = "g_coop_result_cas_count";      dest[n] = &g_result_cas_count_idx;  n++;
-            /* Assigned globals emit BARE names into variables.txt ($-prefixed
-               lines are the read-only emission form) -- runtime-proven: the
-               $-form logged "not found" while variables.txt carries the bare
-               name. */
-            names[n] = "g_coop_my_steam_acctid";       dest[n] = &g_my_steam_acctid_idx;   n++;
-            names[n] = "g_coop_steam_missing";         dest[n] = &g_steam_missing_idx;     n++;
-            names[n] = "g_coop_return_to_campaign";    dest[n] = &g_return_campaign_idx;   n++;
-            for (ci = 0; ci < 10; ci++) {
-                _snprintf(cas_names[3*ci], sizeof(cas_names[0]),
-                          "$g_coop_pending_cas_tid_%d", ci);
-                names[n] = cas_names[3*ci];   dest[n] = &g_pending_cas_tid_idx[ci];    n++;
-                _snprintf(cas_names[3*ci+1], sizeof(cas_names[0]),
-                          "$g_coop_pending_cas_killed_%d", ci);
-                names[n] = cas_names[3*ci+1]; dest[n] = &g_pending_cas_killed_idx[ci]; n++;
-                _snprintf(cas_names[3*ci+2], sizeof(cas_names[0]),
-                          "g_coop_result_cas_%d", ci);
-                names[n] = cas_names[3*ci+2]; dest[n] = &g_result_cas_idx[ci];         n++;
-            }
-
-            modglobals_resolve(vars_path, names, idxs, n);
-            for (ci = 0; ci < n; ci++) *dest[ci] = idxs[ci];
-            coop_log("modglobals: resolved %d ids (encountered_party=%d result_ready=%d)\n",
-                     n, g_encountered_party_idx, g_result_ready_idx);
+            asi_gvars_resolve(&g_gv, vars_path);
         }
 
         /* Background thread for s59 */
         CreateThread(NULL, 0, s59_writer_thread, NULL, 0, NULL);
 
         /* Steam P2P tunnel (no-op unless coop.ini [Steam] sets a role) */
-        steam_tunnel_start(&g_steam_cfg);
+        steam_tunnel_start(&g_cfg.steam);
 
         /* Hook server browser's frameMove to inject server entry */
         hook_install(ADDR_BROWSER_FRAMEMOVE, browser_framemove_detour,
@@ -1187,18 +727,14 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
            char_sync_xp can correct client XP downward.  The upper clamp
            (cap at 29999) at 0x4B84B1 is preserved. */
         {
-            DWORD old_prot;
+            static const BYTE xp_clamp[] = { 0x85, 0xDB, 0x79 };
             BYTE *addr = (BYTE *)0x4B84A9;
-            VirtualProtect(addr, 8, PAGE_EXECUTE_READWRITE, &old_prot);
-            /* Verify original bytes before patching */
-            if (addr[0] == 0x85 && addr[1] == 0xDB && addr[2] == 0x79) {
-                memset(addr, 0x90, 8);
+            if (asi_patch_verified(addr, xp_clamp, 3, k_nops, 8)) {
                 coop_log("addExperienceToTroop negative-clamp patched (8 NOPs at 0x4B84A9)\n");
             } else {
                 coop_log("addExperienceToTroop: unexpected bytes at 0x4B84A9 (0x%02X 0x%02X), skipping patch\n",
                          addr[0], addr[1]);
             }
-            VirtualProtect(addr, 8, old_prot, &old_prot);
         }
 
         /* Patch mbMission::start to allow campaign clients to spawn agents
@@ -1216,59 +752,41 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
            NOP both gates so campaign clients can run local SP missions
            with proper agent spawning. */
         {
-            DWORD old_prot;
-            /* Gate 1: entry point initialization */
-            BYTE *g1a = (BYTE *)0x4F713E;
-            BYTE *g1b = (BYTE *)0x4F7147;
-            VirtualProtect(g1a, 6 + (g1b - g1a) + 6, PAGE_EXECUTE_READWRITE, &old_prot);
-            if (g1a[0] == 0x0F && g1a[1] == 0x84) {
-                memset(g1a, 0x90, 6);
-                coop_log("mbMission::start gate1a patched (6 NOPs at 0x4F713E)\n");
-            } else {
-                coop_log("mbMission::start gate1a: unexpected bytes 0x%02X 0x%02X, skipping\n", g1a[0], g1a[1]);
+            static const BYTE je_near[] = { 0x0F, 0x84 };
+            static const struct { DWORD addr; const char *name; } gates[] = {
+                { 0x4F713E, "gate1a" },   /* Gate 1: entry point initialization */
+                { 0x4F7147, "gate1b" },
+                { 0x4F8B7A, "gate2a" },   /* Gate 2: reinforceEntryGroup + spawnEntryGroups */
+                { 0x4F8B83, "gate2b" },
+            };
+            int i;
+            for (i = 0; i < 4; i++) {
+                BYTE *g = (BYTE *)gates[i].addr;
+                if (asi_patch_verified(g, je_near, 2, k_nops, 6)) {
+                    coop_log("mbMission::start %s patched (6 NOPs at 0x%X)\n", gates[i].name, gates[i].addr);
+                } else {
+                    coop_log("mbMission::start %s: unexpected bytes 0x%02X 0x%02X, skipping\n",
+                             gates[i].name, g[0], g[1]);
+                }
             }
-            if (g1b[0] == 0x0F && g1b[1] == 0x84) {
-                memset(g1b, 0x90, 6);
-                coop_log("mbMission::start gate1b patched (6 NOPs at 0x4F7147)\n");
-            } else {
-                coop_log("mbMission::start gate1b: unexpected bytes 0x%02X 0x%02X, skipping\n", g1b[0], g1b[1]);
-            }
-            VirtualProtect(g1a, 6 + (g1b - g1a) + 6, old_prot, &old_prot);
+        }
 
-            /* Gate 2: reinforceEntryGroup + spawnEntryGroups */
-            BYTE *g2a = (BYTE *)0x4F8B7A;
-            BYTE *g2b = (BYTE *)0x4F8B83;
-            VirtualProtect(g2a, 6 + (g2b - g2a) + 6, PAGE_EXECUTE_READWRITE, &old_prot);
-            if (g2a[0] == 0x0F && g2a[1] == 0x84) {
-                memset(g2a, 0x90, 6);
-                coop_log("mbMission::start gate2a patched (6 NOPs at 0x4F8B7A)\n");
-            } else {
-                coop_log("mbMission::start gate2a: unexpected bytes 0x%02X 0x%02X, skipping\n", g2a[0], g2a[1]);
-            }
-            if (g2b[0] == 0x0F && g2b[1] == 0x84) {
-                memset(g2b, 0x90, 6);
-                coop_log("mbMission::start gate2b patched (6 NOPs at 0x4F8B83)\n");
-            } else {
-                coop_log("mbMission::start gate2b: unexpected bytes 0x%02X 0x%02X, skipping\n", g2b[0], g2b[1]);
-            }
-            VirtualProtect(g2a, 6 + (g2b - g2a) + 6, old_prot, &old_prot);
-
-            /* Gate 3: MP visitor troopNos wipe loop @ 0x4F57FE-0x4F581C.
-               After setParams runs, mbMission::start has a loop gated on
-               gameType != 0 that iterates all 128 visitors and clears
-               m_troopNos (m_end = m_begin). This wipes the troops we
-               pushed via add_visitors_to_current_scene before
-               spawnEntryGroups can read them. Patch the je at 0x4F5805
-               (74 16) to jmp (EB 16) to always skip the wipe loop. */
+        /* Gate 3: MP visitor troopNos wipe loop @ 0x4F57FE-0x4F581C.
+           After setParams runs, mbMission::start has a loop gated on
+           gameType != 0 that iterates all 128 visitors and clears
+           m_troopNos (m_end = m_begin). This wipes the troops we
+           pushed via add_visitors_to_current_scene before
+           spawnEntryGroups can read them. Patch the je at 0x4F5805
+           (74 16) to jmp (EB 16) to always skip the wipe loop. */
+        {
+            static const BYTE je_short[] = { 0x74, 0x16 };
+            static const BYTE jmp_short[] = { 0xEB };
             BYTE *g3 = (BYTE *)0x4F5805;
-            VirtualProtect(g3, 2, PAGE_EXECUTE_READWRITE, &old_prot);
-            if (g3[0] == 0x74 && g3[1] == 0x16) {
-                g3[0] = 0xEB;
+            if (asi_patch_verified(g3, je_short, 2, jmp_short, 1)) {
                 coop_log("mbMission::start gate3 patched (je->jmp at 0x4F5805)\n");
             } else {
                 coop_log("mbMission::start gate3: unexpected bytes 0x%02X 0x%02X, skipping\n", g3[0], g3[1]);
             }
-            VirtualProtect(g3, 2, old_prot, &old_prot);
         }
 
         /* Patch agent_tick + mission_frameMove to enable bot AI, physics,
@@ -1308,10 +826,10 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
                 { (BYTE*)0x508A99, 5, 0x83, 0xF8, "perception final scan"     },
             };
             for (int i = 0; i < 10; i++) {
-                DWORD old_prot;
-                VirtualProtect(ai_gates[i].addr, ai_gates[i].len, PAGE_EXECUTE_READWRITE, &old_prot);
-                if (ai_gates[i].addr[0] == ai_gates[i].op0 && ai_gates[i].addr[1] == ai_gates[i].op1) {
-                    memset(ai_gates[i].addr, 0x90, ai_gates[i].len);
+                BYTE cmp_op[2];
+                cmp_op[0] = ai_gates[i].op0;
+                cmp_op[1] = ai_gates[i].op1;
+                if (asi_patch_verified(ai_gates[i].addr, cmp_op, 2, k_nops, ai_gates[i].len)) {
                     coop_log("agent AI gate %d patched (%d NOPs at 0x%X): %s\n",
                              i, ai_gates[i].len, (DWORD)ai_gates[i].addr, ai_gates[i].name);
                 } else {
@@ -1319,7 +837,6 @@ BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
                              i, ai_gates[i].addr[0], ai_gates[i].addr[1],
                              (DWORD)ai_gates[i].addr, ai_gates[i].name);
                 }
-                VirtualProtect(ai_gates[i].addr, ai_gates[i].len, old_prot, &old_prot);
             }
         }
 

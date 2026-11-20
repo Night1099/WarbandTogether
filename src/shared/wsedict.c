@@ -19,59 +19,8 @@ struct wsedict {
 static const char MAGIC[4] = { 'D', 'E', 'S', 'W' };
 static const uint32_t VERSION = 2;
 
-static int wsedict_grow(wsedict_t *d);
-
 wsedict_t *wsedict_create(void) {
     return (wsedict_t *)calloc(1, sizeof(wsedict_t));
-}
-
-wsedict_t *wsedict_load(const char *path) {
-    FILE *f;
-    char hdr[4];
-    uint32_t ver, count, i;
-    wsedict_t *d;
-
-    if (!path) return NULL;
-    f = fopen(path, "rb");
-    if (!f) return NULL;
-
-    if (fread(hdr, 1, 4, f) != 4 || memcmp(hdr, MAGIC, 4) != 0)     goto fail;
-    if (fread(&ver, 4, 1, f) != 1 || ver != VERSION)                  goto fail;
-    if (fread(&count, 4, 1, f) != 1)                                   goto fail;
-
-    d = wsedict_create();
-    if (!d) goto fail;
-
-    for (i = 0; i < count; i++) {
-        uint32_t key_len, val_len;
-        char *key, *val;
-
-        if (fread(&key_len, 4, 1, f) != 1) goto fail_d;
-        if (fread(&val_len, 4, 1, f) != 1) goto fail_d;
-
-        key = (char *)malloc(key_len + 1);
-        val = (char *)malloc(val_len + 1);
-        if (!key || !val) { free(key); free(val); goto fail_d; }
-
-        if (key_len && fread(key, 1, key_len, f) != key_len) { free(key); free(val); goto fail_d; }
-        if (val_len && fread(val, 1, val_len, f) != val_len) { free(key); free(val); goto fail_d; }
-        key[key_len] = '\0';
-        val[val_len] = '\0';
-
-        if (wsedict_grow(d) != 0) { free(key); free(val); goto fail_d; }
-        d->entries[d->count].key = key;
-        d->entries[d->count].val = val;
-        d->count++;
-    }
-
-    fclose(f);
-    return d;
-
-fail_d:
-    wsedict_free(d);
-fail:
-    fclose(f);
-    return NULL;
 }
 
 /* Find existing entry by key, or -1 if not found */
@@ -100,14 +49,6 @@ static int wsedict_grow(wsedict_t *d) {
     d->entries = new_entries;
     d->capacity = new_cap;
     return 0;
-}
-
-int wsedict_get_int(wsedict_t *d, const char *key, int default_val) {
-    int idx;
-    if (!d || !key) return default_val;
-    idx = wsedict_find(d, key);
-    if (idx < 0) return default_val;
-    return atoi(d->entries[idx].val);
 }
 
 void wsedict_set_str(wsedict_t *d, const char *key, const char *value) {

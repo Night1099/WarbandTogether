@@ -81,6 +81,22 @@
       "status": "Known issue"
     },
     {
+      "group": "Combat",
+      "id": "battle_enemy_hold",
+      "milestone": "adventurer",
+      "name": "Enemy party held during a player's battle",
+      "note": "While you fight a party, it keeps moving on the world map until the battle ends.",
+      "status": "Known issue"
+    },
+    {
+      "group": "Coop features",
+      "id": "battle_hop_host_address",
+      "milestone": "adventurer",
+      "name": "LAN joiners reach the battle server",
+      "note": "On a LAN, joining players must set the host's address as HostIP in coop.ini or battles will not start for them.",
+      "status": "Known issue"
+    },
+    {
       "group": "Coop features",
       "id": "battle_inventory_before_spawn",
       "milestone": "adventurer",
@@ -121,12 +137,28 @@
       "status": "Planned"
     },
     {
+      "group": "Combat",
+      "id": "battle_routing",
+      "milestone": "adventurer",
+      "name": "Troops fleeing a lost battle",
+      "note": "Troops on a battle server never flee, however badly the battle goes.",
+      "status": "Planned"
+    },
+    {
       "group": "Reports & screens",
       "id": "battle_statistics",
       "milestone": "full_parity",
       "name": "Kill statistics",
       "note": "",
       "status": "Not yet assessed"
+    },
+    {
+      "group": "Combat",
+      "id": "battle_xp_roll_range",
+      "milestone": "full_parity",
+      "name": "Battle XP roll matches native's range",
+      "note": "Internal: battle XP can come out up to 1 percent higher than in single player.",
+      "status": "Known issue"
     },
     {
       "group": "Character & party",
@@ -170,11 +202,27 @@
     },
     {
       "group": "Combat",
+      "id": "captive_camera_snap",
+      "milestone": "adventurer",
+      "name": "A captive's camera follows the captor smoothly",
+      "note": "While you are a prisoner, the map camera follows your captor.",
+      "status": "Works"
+    },
+    {
+      "group": "Combat",
+      "id": "captive_shown_as_prisoner",
+      "milestone": "adventurer",
+      "name": "A captive player shows in the captor's party as a prisoner",
+      "note": "Captured players will show up as prisoners when you look at the party holding them.",
+      "status": "Planned"
+    },
+    {
+      "group": "Combat",
       "id": "captivity",
       "milestone": "adventurer",
       "name": "Defeat, captivity and escape",
-      "note": "Losing a battle never makes you a prisoner; you escape at once.",
-      "status": "Planned"
+      "note": "Losing a battle can make you a prisoner: the camera follows your captor until you escape, are ransomed or rescued by another player.",
+      "status": "Partly works"
     },
     {
       "group": "Towns",
@@ -229,7 +277,7 @@
       "id": "character_creation",
       "milestone": "adventurer",
       "name": "Character creation",
-      "note": "Character creation applies your background's stats, but not its starting gold, renown or honor, and you cannot pick a starting town yet.",
+      "note": "Character creation applies your background's stats and gold, but not its renown or honor, and you cannot pick a starting town yet.",
       "status": "Partly works"
     },
     {
@@ -469,8 +517,8 @@
       "id": "food",
       "milestone": "adventurer",
       "name": "Food and supplies",
-      "note": "Your party does not eat food yet, and food never spoils.",
-      "status": "Planned"
+      "note": "Your party eats food and meat spoils, counted over the time you are online.",
+      "status": "Works"
     },
     {
       "group": "Reports & screens",
@@ -495,6 +543,14 @@
       "name": "Guild master",
       "note": "",
       "status": "Not yet assessed"
+    },
+    {
+      "group": "Stability",
+      "id": "hang_report_thread",
+      "milestone": "full_parity",
+      "name": "Server hang reports show the game's own thread",
+      "note": "Internal: a server hang report records the wrong thread, so it takes longer to diagnose.",
+      "status": "Known issue"
     },
     {
       "group": "Lords, ladies & companions",
@@ -527,6 +583,14 @@
       "name": "Inventory and equipment",
       "note": "",
       "status": "Works"
+    },
+    {
+      "group": "Character & party",
+      "id": "inventory_modifier_trust",
+      "milestone": "adventurer",
+      "name": "Item modifiers trusted from the client",
+      "note": "Closing the inventory right as food spoils can undo the spoiling.",
+      "status": "Known issue"
     },
     {
       "group": "Combat",
@@ -773,8 +837,8 @@
       "id": "party_morale",
       "milestone": "adventurer",
       "name": "Party morale",
-      "note": "Party morale does not change yet.",
-      "status": "Planned"
+      "note": "",
+      "status": "Works"
     },
     {
       "group": "Character & party",
@@ -1054,7 +1118,7 @@
       "milestone": "adventurer",
       "name": "Timed server jobs run on schedule (autosave, quest tick)",
       "note": "",
-      "status": "Not yet assessed"
+      "status": "Works"
     },
     {
       "group": "Towns",
@@ -1133,16 +1197,16 @@
       "id": "starter_companion_collision",
       "milestone": "adventurer",
       "name": "Starting companion shared between players",
-      "note": "Two players can end up with the same starting companion.",
-      "status": "Known issue"
+      "note": "",
+      "status": "Works"
     },
     {
       "group": "Character & party",
       "id": "starting_kit",
       "milestone": "adventurer",
       "name": "Starting gold, troops and gear",
-      "note": "New characters start with a large test army and extra gold, and their background's starting equipment is replaced by a default kit.",
-      "status": "Known issue"
+      "note": "",
+      "status": "Works"
     },
     {
       "group": "Coop features",
@@ -1297,6 +1361,14 @@
       "status": "Not in coop"
     },
     {
+      "group": "Coop features",
+      "id": "unjoined_battle_release",
+      "milestone": "adventurer",
+      "name": "A battle nobody reaches is called off",
+      "note": "If nobody manages to join a battle, it is called off after about a minute and the enemy party moves on.",
+      "status": "Works"
+    },
+    {
       "group": "Meta",
       "id": "unused_native",
       "milestone": "full_parity",
@@ -1387,11 +1459,11 @@
   ],
   "milestones": [
     {
-      "done": 28,
+      "done": 35,
       "id": "adventurer",
       "name": "Adventurer",
       "summary": "Travel, fight bandits, loot, trade, recruit, pay wages, be captured and escape, use taverns, the arena and tournaments, hire companions, do village work and early quests.",
-      "total": 117
+      "total": 124
     },
     {
       "done": 1,
@@ -1419,7 +1491,7 @@
       "id": "full_parity",
       "name": "Full parity",
       "summary": "Everything left, including meta and reports.",
-      "total": 27
+      "total": 29
     }
   ],
   "schema_version": 1

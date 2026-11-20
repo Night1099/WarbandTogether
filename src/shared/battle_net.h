@@ -7,6 +7,11 @@
    is_listener=0: battle server connects to localhost:port (max_peers
                   ignored, single outbound peer). */
 int  bnet_init(int is_listener, int port, int max_peers);
+
+/* Delivers every pending event to the callbacks and returns without
+   waiting for more. Both callers poll it from their own loops (the
+   campaign IPC thread, and the battle poll thread, whose reconnect
+   timer runs right after it), so it must never block. */
 void bnet_poll(void);
 
 /* Outbound send on the single client-mode peer (battle server side). */

@@ -172,7 +172,7 @@ multiplayer_event_multiplayer_campaign_server_event_party_set_banner_icon     = 
 multiplayer_event_multiplayer_campaign_server_event_party_set_extra_icon      = 1
 multiplayer_event_multiplayer_campaign_server_event_party_set_extra_text      = 2
 multiplayer_event_multiplayer_campaign_server_event_party_add_particle_system = 3
-multiplayer_event_multiplayer_campaign_server_event_camera_follow_party       = 4
+# 4 free (was camera_follow_party -- the client picks its camera target, coop_client_camera_follow)
 multiplayer_event_multiplayer_campaign_server_event_player_joined             = 5
 multiplayer_event_multiplayer_campaign_server_event_player_exit               = 6
 multiplayer_event_multiplayer_campaign_server_event_player_party_defeated     = 7
@@ -265,8 +265,14 @@ multiplayer_event_multiplayer_campaign_server_event_quest_lords = 62
 # Wages (coop_wage_send_report): int1 = the payday's wage total (bits 0-23)
 # | half days this week (24-27) | payday (28), int2 = paid, int3 = debt
 # after. Sent at hydrate, when a half day is counted and on each payday.
-# 64 free.
 multiplayer_event_multiplayer_campaign_server_event_wage_report = 63
+# captivity: captor party, state, pending ransom
+multiplayer_event_multiplayer_campaign_server_event_captivity_state = 64
+# Party morale (coop_set_party_morale): int1 = morale, int2 = change + 128,
+# int3 = reason (coop_morale_reason_*). Sent at hydrate, creation and drift.
+multiplayer_event_multiplayer_campaign_server_event_party_morale = 65
+# Item amount of one consumable slot (coop_send_slot_amount): int1 = slot, int2 = amount.
+multiplayer_event_multiplayer_campaign_server_event_inv_slot_amount = 66
 
 #multiplayer campaign client events
 multiplayer_event_multiplayer_campaign_leave_encounter = 0
@@ -356,6 +362,9 @@ multiplayer_event_multiplayer_campaign_debug_teleport = 39
 # declare war on the players. a = the kingdom's faction id. The server
 # ignores it unless $g_coop_debug_reveal is set.
 multiplayer_event_multiplayer_campaign_debug_declare_war = 40
+
+# Castle captivity: the player's answer to a ransom offer (a = 1 pay, 0 refuse).
+multiplayer_event_multiplayer_campaign_captivity_ransom_answer = 41
 
 #multiplayer message types
 multiplayer_message_type_auto_team_balance_done      = 2

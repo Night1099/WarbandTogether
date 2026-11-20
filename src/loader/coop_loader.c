@@ -1,6 +1,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "exe_personality.h"
+#include "loader_path.h"
+
 /* Minimal winmm.dll proxy — all 180 exports forwarded to winmm_sys.dll
    via linker /EXPORT:name=winmm_sys.name (no runtime LoadLibrary).
    Only job: load CoopWSEPlugin.dll from a background thread. */
@@ -16,11 +19,10 @@ static DWORD WINAPI loader_thread(LPVOID param) {
        This check is what keeps CoopWSEPlugin.dll out of every player
        client that ships the same winmm proxy on disk. */
     GetModuleFileNameA(NULL, path, MAX_PATH);
-    if (!strstr(path, "dedicated")) return 0;
+    if (!coop_is_dedicated_exe(path)) return 0;
 
     Sleep(3000);
-    { char *s = strrchr(path, '\\'); if (s) s[1] = '\0'; }
-    lstrcatA(path, "CoopWSEPlugin.dll");
+    loader_plugin_path(path);
     g_plugin = LoadLibraryA(path);
     return 0;
 }
