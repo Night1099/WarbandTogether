@@ -2,12 +2,7 @@
 
 > **⚠️ Disclaimer** this is **not a fully playable mod yet**. The
 > core coop loops below work in testing, but do not expect a full campaign
-> playthrough — your character persists on the host (autosaved about every
-> 20 minutes of play and on disconnect), and the campaign world is saved on
-> the same cadence and when the last player leaves, then continued on the
-> next server start; battle loot isn't wired up yet and
-> being taken prisoner after a lost battle is still in testing, some siege and economy behavior diverges
-> from singleplayer, and longer sessions will hit bugs and desyncs. Grab
+> playthrough longer sessions will hit bugs and desyncs. Grab
 > the current build from the
 > [Releases page](https://github.com/Night1099/WarbandTogether/releases)
 > and report what breaks via Issues.
