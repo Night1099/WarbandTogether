@@ -1,215 +1,151 @@
 # Install Guide
 
-> **⚠️ Disclaimer** this is **not a fully playable mod yet**. The
-> core coop loops below work in testing, but do not expect a full campaign
-> playthrough longer sessions will hit bugs and desyncs. Grab
-> the current build from the
-> [Releases page](https://github.com/Night1099/WarbandTogether/releases)
-> and report what breaks via Issues.
+> **Early Alpha:** WarbandTogether is still under active development and isn't ready for a full campaign playthrough yet — longer sessions can hit bugs or desyncs. Grab the latest build from the [Releases page](https://github.com/Night1099/WarbandTogether/releases) and report issues on GitHub.
 
-How to get playing, from a clean Warband install. Building from source is
-a different document (`docs/BUILD.md`) — this one covers the
-[release zip](https://github.com/Night1099/WarbandTogether/releases).
+This guide covers installing from the [release zip](https://github.com/Night1099/WarbandTogether/releases) on a clean Warband install. (To compile from source instead, see `docs/BUILD.md`.)
 
-**You need:** Mount & Blade: Warband (Steam, v1.174), Windows 10 or
-later, and the release zip. The zip contains everything else — do **not**
-install WSE2 yourself.
+### What You Need
+- **Mount & Blade: Warband** (Steam, v1.174) on Windows 10 or later
+- The latest **WarbandTogether release zip** — it already includes the patched WSE2 engine, so **do not install or update WSE2 separately**
 
-One person **hosts** (runs the servers in the background); everyone,
-host included, also plays on a normal game client. Hosting and playing on
-the same PC is fine.
+One player **hosts** (runs the campaign and battle servers in the background). Everyone — including the host — plays using the game client. Hosting and playing on the same PC works fine.
 
 ---
 
-## Step 1 — Install the mod
+## Step 1 — Install the Mod (Everyone)
 
-1. Install Warband from Steam, launch it once, and quit.
-2. Steam → right-click Warband → Manage → **Browse local files**.
-3. Extract the release zip **directly into the Warband folder next to the game exe**.
+1. Install Warband from Steam, launch it once, and close it.
+2. In Steam, right-click Warband → **Manage** → **Browse local files**.
+3. Extract the release zip **directly into that Warband folder** (next to `mb_warband.exe`).
+   - *Upgrading from an older release?* Just extract over your existing folder — the zip ships `coop.ini.example`, so your `coop.ini` won't be overwritten.
 
-Everyone does Step 1.
-
-> Joining over Steam? You're done — you never touch `coop.ini` at all
-> unless the host set a password (Step 4) or you're on LAN (Step 2B).
+> **Joining a friend over Steam?** You're already done with configuration — skip straight to **Step 5** (unless the host set a password in **Step 4**).
 
 ---
 
-## Step 2 — Pick how you'll connect
+## Step 2 — Choose How You'll Connect
 
-| | Use this if | Router setup? |
+| Method | Best for | Router / port setup? |
 |---|---|---|
 | **A. Steam** *(recommended)* | Playing with friends over the internet | **None** |
-| **B. LAN / direct IP** | Same house/network, or you already run a VPN like Hamachi or Tailscale
+| **B. LAN / Direct IP** | Same home network, or a VPN like Tailscale / Hamachi | Firewall rule (and port forwarding if over the internet) |
 
-Do **A** or **B**, not both. Then continue to Step 3.
+Follow **either A or B**, then continue to Step 3.
 
-### A. Steam
+### Option A — Steam *(recommended)*
 
-**Host ONLY** — rename `coop.ini.example` to `coop.ini` *(first install
-only — keep your configured `coop.ini` when upgrading)*, then in the
-`[Steam]` section, uncomment this line (delete the leading `;`):
+- **Host only:**
+  1. Rename `coop.ini.example` to `coop.ini` *(first install only — keep your existing `coop.ini` when updating)*.
+  2. Open `coop.ini`, find the `[Steam]` section, and uncomment `SteamHost=1` (remove the leading `;`):
+     ```ini
+     SteamHost=1
+     ```
+  3. While your game is running, Steam friends will see a **Join Game** button on your profile, and you can right-click friends → **Invite to Game**.
 
-```ini
-SteamHost=1
-```
+  > **Security note:** By default, anyone who can click **Join Game** can connect. Set a password (Step 4) or list allowed players under `AllowedSteamIDs` in `coop.ini` if you want to restrict access.
 
-That's it. While your game is running, your Steam friends will see a
-**Join Game** button next to your name, and you can right-click a friend
-→ **Invite to Game**.
+- **Joining players:** Don't edit `coop.ini`. Jump to **Step 5** (or **Step 4** if the host set a password).
 
-> ⚠️ By default **anyone** who can click that button can connect. Set a
-> password (Step 4) unless you're fine with that.
+### Option B — LAN / Direct IP *(skip if using Steam)*
 
-**Players** — change nothing in `coop.ini`. You'll join by clicking your
-friend's Join Game button (or accepting their invite) in Step 5.
+- **Host:**
+  1. Open Command Prompt and run `ipconfig`. Note your **IPv4 Address** (for example, `192.168.1.20`) and share it with your friends. Leave your own `coop.ini` untouched.
+  2. Open UDP ports `7240–7247` in Windows Firewall by running this in an **Administrator PowerShell**:
+     ```powershell
+     netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7247 profile=any
+     ```
+  *(Hosting over the internet without Steam? Also forward **UDP 7240–7247** on your router — or switch to Option A to avoid port forwarding completely.)*
 
-### B. LAN / direct IP (**Skip if using Steam**)
-
-**Host** — ask Windows for your IP (`ipconfig` in a Command Prompt; use
-the `IPv4 Address` line, e.g. `192.168.1.20`) and give it to your
-friends. Leave your own `coop.ini` alone.
-
-**Players** — rename `coop.ini.example` to `coop.ini` (if you haven't
-already), open it, and set the host's IP:
-
-```ini
-HostIP=192.168.1.20
-```
-
-host will have to open a firewall rule as well (admin powershell)
-```
-netsh advfirewall firewall add rule name="Warband Coop" dir=in action=allow protocol=UDP localport=7240-7247 profile=any
-```
-
-*(Playing over the internet without Steam? The host must forward UDP
-ports **7240–7247** on their router. Option A avoids this entirely.)*
+- **Joining players:**
+  1. Rename `coop.ini.example` to `coop.ini` (if you don't already have one).
+  2. Open `coop.ini` and set `HostIP` to the host's IP address:
+     ```ini
+     HostIP=192.168.1.20
+     ```
+  *(Important: leaving `HostIP` at `127.0.0.1` lets you join the campaign map, but dedicated battles will kick you back to the multiplayer menu.)*
 
 ---
 
-## Step 3 — Host: start the servers
+## Step 3 — Start the Servers (Host Only)
 
-From the game folder, run:
+From your Warband folder, run:
 
-```
+```bat
 coop_launch_all.bat
 ```
 
-This starts the campaign server, 2 battle servers, and your game client.
-Want more simultaneous battles? `coop_launch_all.bat 4` (4 is the max).
-Leave the black console windows open while you play.
+This launches the campaign server, 2 battle servers, and your game client. Leave the black server console windows open while you play. *(Need more simultaneous battles? Run `coop_launch_all.bat 4` — up to 4 battle servers are supported.)*
 
-The campaign server continues the same world every time you start it
-(the save is `sg00.sav` in
-`Documents\Mount&Blade Warband WSE2\NativeCoop\Savegames\`). To start a
-new world, delete or move that file before launching. Do the same after
-installing a new release: a world saved by an older build may not load
-correctly into a newer one. Typing `campaign_save` in the campaign
-server's console saves the world at any time. Before closing the campaign
-server window, type `campaign_save` (or wait for `[WORLD SAVE] finished`
-after the last player has left), or the world loses everything since the
-last save. The debug launcher (`coop_launch_all_debug.bat`) keeps its own
-world in `sg01.sav`.
+### World Saves
+- The campaign server automatically saves and reloads the shared world at:
+  `Documents\Mount&Blade Warband WSE2\NativeCoop\Savegames\sg00.sav`
+- Autosaves run every 20 minutes while anyone is online, and automatically when the last player disconnects.
+- **Before closing the campaign server window:** Type `campaign_save` in the server console (or wait for `[WORLD SAVE] finished` after everyone leaves), otherwise progress since the last save is lost.
+- **Starting a fresh world / updating to a new release:** Move or delete `sg00.sav` before launching. World saves from older mod releases may not load cleanly in newer builds.
+- *(The debug launcher `coop_launch_all_debug.bat` uses its own separate save slot, `sg01.sav`.)*
 
 ---
 
-## Step 4 — Optional: set a password
+## Step 4 — Set a Server Password *(Optional)*
 
-**Host** — in `coop.ini`, under `[Coop]`:
-
-```ini
-Password=mypassword
-```
-
-Max 47 characters. Restart the servers after changing it.
-
-**Players** — put the same line in **your own** `coop.ini`
-(`Password=mypassword`; rename `coop.ini.example` to `coop.ini` first if
-you don't have one). With it there, invite auto-join sends the
-password for you, and the hop to a battle server sends it too.
-Without it, accepting an invite only lands you in the multiplayer
-browser — you can still type the password into the browser's password
-box to join, but battles will reject you partway through the session.
-Known issue: on a passworded server a joiner can still fail the hop to
-a battle server even with `Password=` set. If you run into it, leave
-the password off for now.
+- **Host:** In `coop.ini` under `[Coop]`, set a password (max 47 characters) and restart the servers:
+  ```ini
+  Password=mypassword
+  ```
+- **Joining players:** Rename `coop.ini.example` to `coop.ini` (if needed) and add the **exact same `Password=` line**.
+  - With it set, Steam auto-join and dedicated battle-server hops send the password automatically.
+  - Without it, Steam invites stop at the multiplayer browser (where you can type the password manually), and joining a dedicated battle will kick you back to the server list.
+  - *Known issue:* On a passworded server, joiners can occasionally still fail the hop to a battle server even with `Password=` set. If that happens, leave `Password=` blank for now.
 
 ---
 
-## Step 5 — Join and play
+## Step 5 — Join and Play
 
-Joiners Launch **`mb_warband_wse2.exe`** — *not* `mb_warband.exe` — and pick the
-**NativeCoop** module.
+Launch **`mb_warband_wse2.exe`** (not `mb_warband.exe`) and select the **NativeCoop** module. *(The host's client is already launched by `coop_launch_all.bat`.)*
 
-**If you're using Steam (A):**
+### Joining via Steam (Option A)
+1. Make sure **Steam is running** before you launch the game, and that the host's game is running.
+2. Click **Join Game** on the host (or any friend already in the session) in your Steam friends list — or accept an **Invite to Game**.
+3. Wait ~5–10 seconds: the game will automatically open the multiplayer browser and connect with zero clicks.
+   - *If you're in a singleplayer battle*, auto-join waits until you leave the mission.
+   - *If the server has a password and you didn't put it in `coop.ini`*, you'll land in the browser — select the **COOP Direct** row and enter the password manually.
 
-1. Make sure Steam is running **before** you start the game.
-2. The Hosts game must be running too.
-3. Click **Join Game** on their Steam friends list entry — or accept an
-   invite they sent you (right-click → **Invite to Game**).
-4. That's it. Within ~5–10 seconds the game navigates itself into the
-   multiplayer browser and **joins automatically** — no clicks needed.
-   (If you're mid-battle in singleplayer it waits until you leave the
-   mission. On a passworded server without `Password=` in your
-   `coop.ini`, it only opens the browser — join the **COOP Direct** row
-   yourself and type the password.)
+*(Steam invites work both ways and chain through any player in the session. One Steam quirk: players already in the same session won't see Join/Invite buttons for each other, only for friends outside the session.)*
 
-Invites work in every direction: you can Join Game on the host *or on
-any friend already playing*, and both the host and joiners can
-right-click a friend → Invite to Game. (One Steam quirk: two people
-already in the same session lose the Join/Invite entries toward *each
-other* — they still show toward everyone else.)
+### Joining via LAN / Direct IP (Option B)
+Go to **Multiplayer → Join a Game**. The campaign server appears automatically on the LAN list — click it to join.
 
-**If you're using LAN / direct IP (B):**
+---
 
-Multiplayer → Join a game. The server shows up automatically after lan scan — join it.
+## How Co-op Gameplay Works
 
-**Then, everyone:** first time in, you'll make a character. After that
-your character, gear, gold and XP are saved on the host's server and
-survive disconnects.
-
-**Playing:**
-- You all share one campaign map.
-- Start a battle and you're taken to it automatically. Anyone else can
-  press **B** on the map to see open battles and jump in.
-- You get one life per battle. Casualties and XP land on your party when
-  you return to the map.
-- Yes the battles kick you back to menu at end of play this will be more seamless in future but results are applied on rejoin
-- Character, inventory, party and trade screens all work — changes save
-  when you close the screen.
-- You can walk around towns, villages and castles, trade with the
-  merchants standing there, enter the lord's hall, and take quests from
-  mayors and elders. Leaving a visit drops you to the server browser for
-  a moment and rejoins automatically. Towns also offer the tavern, where
-  you can hire the mercenary company and turn in wine deliveries. Tested
-  quests: caravan escort, cattle herd, wine delivery, looters, paying the
-  kidnapped girl's ransom, and night bandits; the others are in but not
-  tested yet (see the release notes).
+- **Persistent Characters:** On your first join you'll create a character. Your character, stats, equipment, gold, XP, and party save on the host server across disconnects.
+- **Shared Map & Battles:** Everyone plays on one live campaign map. Starting a battle moves you into it automatically; other players can press **B** on the map to see open battles and jump in.
+- **One Life & Battle Transitions:** You get one life per battle. When a battle ends, the game briefly returns through the menu/rejoin flow and applies your casualties, prisoners, and XP automatically once you're back on the map.
+- **Screens & Trading:** Character, inventory, party, and trade screens save when you close them.
+- **Towns, Villages, Castles & Taverns:** Walk around scenes, visit the lord's hall, hire mercenaries in taverns, trade face-to-face with merchants, and take quests from guild masters and village elders. Leaving a visit automatically reconnects you to the campaign map.
+  - *Verified quests:* Escort Caravan, Move Cattle Herd, Deliver Wine, Deal with Looters, Rescue Kidnapped Girl (ransom), and Deal with Night Bandits. Other quests are in-progress (see the release notes).
 
 ---
 
 ## Troubleshooting
 
-**My character reset after updating.** Characters made before this
-version were saved under your Windows/Steam profile name. Steam players
-now get a character tied to their actual Steam account instead, so the
-first time you join after updating, the game makes you a fresh
-character — your old one isn't deleted, it's just no longer the one
-that loads for you.
-
 | Problem | Fix |
 |---|---|
-| **Clicking Join Game / accepting an invite does nothing** | Your game and Steam must both already be running (the invite can't launch the game). With WSE2 its possible to be running game without steam in background so make sure its on. If you're already in a server, leave it first and click again. If you're in a singleplayer battle, the auto-join waits until you leave the mission. `warband_coop.log` in the game folder says exactly what happened |
-| **No server in the list** | *Steam:* wait 10 s and press Search. *LAN:* wrong `HostIP`, or the host skipped the firewall step |
-| **"Unable to connect"** | A firewall **block** rule on the host — see below. Also check the host's server consoles are actually open |
-| **Battles kick you to the menu** | Your `HostIP` is still `127.0.0.1` (Step 2B) |
-| **Battles never start** | Host has no battle server running — use `coop_launch_all.bat` |
-| **Password rejected / invite won't auto-join a passworded server** | Make sure the same `Password=` line is in your own `coop.ini`; joining manually, retype it in the browser's password box |
-| **Crash on launch** | You ran `mb_warband.exe`, or Steam updated Warband over the modded engine — re-extract the zip |
-| **"Invalid Quick String ID"** | Delete `Modules\NativeCoop` and re-extract the zip |
-| **B key does nothing** | No battle is open right now |
+| **Clicking Join Game / accepting an invite does nothing** | Both **Steam** and **`mb_warband_wse2.exe`** must already be running (Steam invites won't launch the game, and WSE2 can run without Steam open). If you're already on a server, disconnect first and retry. Check `warband_coop.log` in the game folder for the exact reason. |
+| **No server shows up in the list** | **Steam:** wait 10 seconds and click **Search**. **LAN:** check `HostIP` in your `coop.ini`, and make sure the host added the Windows Firewall rule (Step 2B). |
+| **"Unable to connect"** | Confirm the host's server console windows are open, and check for a Windows Firewall **block** rule on the host (see below). |
+| **Dedicated battles kick you back to the menu** | Your `HostIP` in `coop.ini` is missing, wrong, or still set to `127.0.0.1` (Step 2B). |
+| **Battles never start** | No battle servers are running on the host — launch with `coop_launch_all.bat`. |
+| **Password rejected / invite stops at browser** | Add the host's exact `Password=` line to your own `coop.ini`, or type it into the multiplayer browser's password box. |
+| **Crash on launch** | You launched `mb_warband.exe` instead of `mb_warband_wse2.exe`, or Steam verified/overwrote the modded files — re-extract the release zip. |
+| **"Invalid Quick String ID" error** | Delete `Modules\NativeCoop\` and re-extract the release zip cleanly. |
+| **Pressing `B` does nothing** | No dedicated battle is currently open (or you're currently a prisoner). |
+| **Character reset after updating from v0.0.6 or older** | Steam players' characters are now tied to their Steam account ID instead of display name, so your first join creates a fresh character. Your old name-keyed file is still on disk, just no longer loaded. |
 
-**Clearing a firewall block rule (host).** In PowerShell as
-administrator:
+### Removing a Windows Firewall Block Rule (Host)
+
+If joiners can see the server but get **"Unable to connect"**, Windows Firewall may have saved an inbound block rule. Run this in an **Administrator PowerShell** on the host to list suspect rules:
 
 ```powershell
 Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True | ForEach-Object {
@@ -219,21 +155,16 @@ Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True | ForEach-Obj
 }
 ```
 
-Then for each name it prints:
+Then disable each rule name it prints:
 
 ```powershell
-Disable-NetFirewallRule -DisplayName "<name>"
+Disable-NetFirewallRule -DisplayName "<rule name>"
 ```
 
 ---
 
-## A note on `coop.ini`
+## About `coop.ini`
 
-Only three things in that file are meant for you: `HostIP`, `Password`,
-and the `[Steam]` section — and if you're a player joining over Steam
-on an unpassworded server, you never touch any of them. **Leave
-`[NetTuning]` alone** — deleting it makes the connection worse.
+You only ever need to edit three things in `coop.ini`: `HostIP`, `Password`, and the `[Steam]` section (and Steam joiners on unpassworded servers don't need to touch `coop.ini` at all). **Leave `[NetTuning]` alone** — removing or changing it degrades connection quality.
 
-Still stuck? Open an issue with your setup (LAN or Steam, how many
-players) and the host's `warband_coop_host.log` from the game folder.
-See `CONTRIBUTING.md`.
+Still stuck? Open an issue on GitHub with your setup (Steam or LAN, player count) and attach the host's `warband_coop_host.log` from the game folder. See `CONTRIBUTING.md`.

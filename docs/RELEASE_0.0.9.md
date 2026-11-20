@@ -1,138 +1,56 @@
-# v0.0.9
+# v0.0.9 — Captivity, Morale & Food
 
-Release notes for WarbandTogether v0.0.9: everything committed on the
-Workbench `main` since the v0.0.82 sync (`30dea55`). The maintainer has
-runtime-verified everything under Added and Fixed. Code listed under
-**Future release** ships in this build too, but it is not verified
-yet; treat it as a preview that may not work.
+Players can now be taken prisoner when defeated, rescued by friends, feed their troops, and manage party morale.
 
-## Read this first
+> **Before you update:**
+> - **Back up your characters before testing captivity.** Being captured can cost gold and items, just like in singleplayer. Character files live in the campaign server's `WSE\NativeCoop\` folder (`coop char sid <id>.wsedict` and `coop char bak sid <id>.wsedict`).
+> - **Old world saves:** Saves from v0.0.82 haven't been tested with this build. If anything seems off after updating, move `sg00.sav` out of `Documents\Mount&Blade Warband WSE2\NativeCoop\Savegames\` to start a fresh world.
+> - **LAN players:** Make sure `HostIP` in your `coop.ini` is set to the host PC's LAN IP (see Known Issues).
 
-- **Back up your character before testing captivity.** Being taken
-  prisoner costs gold and items, as in singleplayer. Characters are the
-  `coop char sid <id>.wsedict` files (and their `coop char bak sid
-  <id>.wsedict` twins) in the campaign server's
-  `WSE\NativeCoop\` folder.
-- **A world saved by an older build** has not been tested with this
-  one. If anything looks wrong after the update, move `sg00.sav` out of
-  `Documents\Mount&Blade Warband WSE2\NativeCoop\Savegames\` and start a
-  fresh world.
-- **LAN joiners must set `HostIP`** to the host PC's LAN address in their
-  own `coop.ini` (see Known issues). Check it with `ipconfig` on the
-  host.
+## What's New
 
-## Added
+- **Defeat, Captivity & Rescue**
+  - Losing a battle can now make you a prisoner, costing troops, prisoners, some gold, and potentially items.
+  - While captive, your party disappears from the map and your camera smoothly follows your captor (clicking the map, opening menus, or rejoining keeps it locked on them).
+  - You'll eventually escape on your own. If held in a castle, you get singleplayer's events: prisoner exchange, another night in the cell, or a ransom offer you can pay or refuse.
+  - **Co-op rescue:** Another player can defeat your captor (locally or on a battle server) to free you and your party on the spot. Only the captor's own troops fight.
+  - Captivity persists across disconnects and rejoins. While captive, you can't enter towns or join battles with `B`.
+- **Party Morale**
+  - Your party now has singleplayer morale driven by food variety, party size, leadership, and wage debt.
+  - Morale persists across rejoins and sets how brave your bots are in dedicated battles.
+- **Food & Supplies**
+  - Your party eats food from your inventory and meat spoils over time while you're online.
+  - Running out of food shows the red *"Party has nothing to eat!"* warning and drains morale.
+  - Food quantities persist across rejoins, moving items in your inventory, and dedicated battles.
+- **Abandoned Battles Auto-Cancel**
+  - If nobody connects to a dedicated battle within ~1 minute of real time (15 game hours), the battle is cancelled automatically — freeing the enemy party and battle server slot and notifying whoever started it. Battles that actually start are never cancelled.
+- **Weekly Budget Report on Payday**
+  - Payday now opens singleplayer's weekly budget screen showing prior debt, gold before payment, and wages charged.
 
-- **Defeat, captivity and escape** (verified 2026-10-10 to 2026-11-20).
-  Losing a battle can now make you a prisoner, as in singleplayer:
-  - You lose some gold and maybe items, and your troops and prisoners
-    are gone.
-  - Your party disappears from the map for every player while you are
-    held, and the map camera follows your captor smoothly. Clicking the
-    map, opening a screen or rejoining does not pull it away.
-  - You escape after a while. In a castle you get native's rolls instead:
-    an exchange, another night in the cell, or a ransom offer that you
-    can refuse or pay.
-  - **Another player can rescue you** by beating your captor, in a local
-    fight or on a battle server. You are set free on the spot with your
-    party, and only the captor's own troops fight.
-  - Captivity survives a disconnect and rejoin.
-  - The battle key (B) and entering towns do nothing while you are
-    captive.
-- **Party morale** (verified 2026-10-28 and 2026-11-18). Your party has
-  native's morale: it drifts toward the target in the morale report
-  (food variety, party size, leadership, wage debt), it survives a
-  rejoin, and battle-server bots get their courage from it.
-- **Food and supplies** (verified 2026-10-28 to 2026-10-31). Your party
-  eats from your inventory and meat spoils, as in singleplayer, counted
-  over the time you are online. A party with nothing to eat shows the red
-  "Party has nothing to eat!" line and loses morale. Food amounts survive
-  a rejoin, moving items around and a battle-server battle.
-- **A battle nobody reaches is called off** (verified 2026-11-20). If no
-  player gets onto the battle server, the battle is released after about
-  a minute of play (15 game hours): the enemy party moves on, the battle
-  server slot is freed for the next battle, and the initiator gets a
-  message. A battle that started is never released, however long it
-  runs.
-- **The weekly budget report opens on payday** (verified 2026-11-20), as
-  in singleplayer, with the week before the payment: earlier debts, your
-  gold before paying, and the wages the server charged.
+## Bug Fixes
 
-## Fixed
+- **Starting Gear & Background Kit:** New characters now spawn with the correct starting gold and equipped gear for their chosen background — no extra free troops, bonus gold, or duplicate shared starting companions.
+- **Clean Character Slots:** Creating a new character in a previously used player slot no longer inherits leftover skills, proficiencies, XP, or renown.
+- **Double Volunteer Recruitment:** Recruiting villagers no longer briefly shows twice as many recruits on your client.
 
-- **New characters start with their background's kit** (verified
-  2026-10-10 and 2026-10-28). A new character gets native's starting gold
-  and items for the chosen background, equipped, and no free troops,
-  companion or gold. Two players no longer share the same starting
-  companion.
-- **A new character starts from a clean troop** (`2e69a24`; verified
-  2026-10-27). A player slot reused by a new character no longer keeps the
-  previous player's skills, proficiencies, experience or renown.
-- **Recruited volunteers were added twice** (`6baddb8`; verified
-  2026-10-27). Your client showed the recruits on top of the ones the
-  server had already added.
+## Cleanup
 
-## Changed
+- Removed `coop_client2.bat` (an internal dev script that never worked in release builds), along with an unused Lua reporter and an unused battle server ini file.
 
-- `coop_client2.bat` (a developer tool that never worked from a release
-  install) is no longer shipped.
-- Removed an unused Lua reporter and an unused battle server ini file.
+## Experimental / Unverified
 
-## Future release
+*Included in this build, but not fully tested yet — let us know if you run into issues.*
 
-In this build but not verified yet. Expect these to change; report what
-you see.
+- **Enemy Party Stays Put During Combat:** Attacked parties should no longer wander off the map mid-fight (seen working in dedicated battles; local fights untested).
+- **Clean Battle Server XP Slots:** Battle servers now wipe leftover XP when reusing a player slot so it can't leak as extra kill XP.
+- Unverified items listed under **Experimental** in the v0.0.82 notes are still pending full testing.
 
-- **The enemy party is held while you fight it** (`b685f48`). The party
-  you attack no longer wanders off the map during the fight. Seen working
-  for a battle-server fight in the 2026-11-20 captivity test; the local
-  fight is unverified.
-- **Battle servers reset the experience a slot kept from the previous
-  player** (`b2bf3c3`), so a battle cannot pay leftover experience as kill
-  XP.
-- Everything listed under "Future release" in the v0.0.82 notes that is
-  not above is still unverified.
+## Known Issues
 
-## Known issues
-
-### LAN joiners need the host's address in `HostIP`
-
-The battle hop goes to the `HostIP` in the joiner's own `coop.ini`, not
-to the server they joined from the list. A joiner with no `HostIP`, the
-default `127.0.0.1` or a wrong address can play on the campaign map, but
-every dedicated battle sends them back to the multiplayer menu. They may
-then need to restart the game to rejoin. The battle is called off after
-about a minute, so the enemy party is not stuck any more. Set `HostIP` to
-the host PC's LAN address.
-
-### A companion protects you from capture in a dedicated battle
-
-A party with a companion is never taken prisoner after losing a
-battle-server fight, because the battle server never wounds a hero far
-enough for the defeat check. A local fight captures you as expected.
-Only the player who started a battle-server fight can be captured by it.
-
-### A captive is not listed in the captor's party
-
-While you are held, your captor's party does not show you as a prisoner.
-
-### Bots never flee a lost battle
-
-Battle-server troops get their courage from party morale but never rout.
-
-### Joining a dedicated battle on a passworded server
-
-With `Password=` set in `coop.ini`, every player must also put the same
-password in their own `coop.ini`, or the hop to a dedicated battle drops
-them to the multiplayer server list.
-
-### Closing the inventory as food spoils
-
-Closing the inventory window at the moment meat spoils can undo that
-spoiling.
-
-### Carried over from v0.0.82
-
-Village elders' gold does not rise when you sell to them, mayors keep
-offering the caravan escort, and enemy towns still look neutral on the
-map after a war starts (they still refuse you).
+- **LAN Players Must Set `HostIP`:** Dedicated battles connect to the `HostIP` in your own `coop.ini`, not the server you clicked in the browser. If it's blank, wrong, or left at `127.0.0.1`, you can play on the campaign map but joining a dedicated battle kicks you to the multiplayer menu (and may require restarting the game). Set `HostIP` to the host PC's LAN IP (`ipconfig` on the host).
+- **Companions Prevent Capture in Dedicated Battles:** Having a companion in your party prevents you from being taken prisoner after losing a dedicated battle (works normally in local fights). Also, only the player who started a dedicated battle can be captured by it.
+- **Captives Aren't Shown in the Captor's Party:** Your captor's party tooltip/roster doesn't list you as a prisoner yet.
+- **Battle Bots Never Rout:** Dedicated battle troops use party morale for courage, but never flee a losing fight.
+- **Passworded Servers & Battle Hops:** If the host sets `Password=` in `coop.ini`, every player must also add that exact password to their own `coop.ini`, or dedicated battle hops will drop them to the server list.
+- **Closing Inventory as Meat Spoils:** Closing your inventory at the exact moment meat spoils can undo the spoilage.
+- **From Earlier Releases:** Selling to village elders doesn't increase their gold; guild masters keep offering caravan escorts once other quests are on cooldown; enemy towns still show as neutral on the map tooltip after war is declared (though they still refuse entry).
