@@ -28,9 +28,9 @@ for /l %%s in (0,1,%LAST%) do (
   rem set-then-start: start snapshots the environment, so COOP_BATTLE_SLOT
   rem is captured per iteration without delayed expansion.
   set COOP_BATTLE_SLOT=%%s
-  start "Coop Battle Server %%s" "mb_warband_wse2_dedicated.exe" -r Configs\BattleServer_%%s.txt -m NativeCoop
+  start "Coop Battle Server %%s" "mb_warband_wse2_dedicated.exe" -r Configs\BattleServer_%%s.txt --module NativeCoop
 )
 
 timeout /t 2 >nul
-start "" "mb_warband_wse2.exe" -m NativeCoop
+start "" "mb_warband_wse2.exe" --module NativeCoop
 endlocal
